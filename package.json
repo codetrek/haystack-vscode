@@ -5,8 +5,7 @@
   "version": "1.1.1",
   "publisher": "codetrek",
   "haystackVersion": "1.2.3",
-  "repository": "https://github.com/CodeTrek/haystack-vscode",
-  "license": "MIT",
+  "repository": "https://github.com/ai-microsoft/haystack-vscode",
   "icon": "resources/icon.png",
   "author": {
     "name": "Jianjun Chen",

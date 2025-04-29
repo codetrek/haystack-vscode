@@ -11,7 +11,7 @@ vscode-haystack-search is a Visual Studio Code extension that leverages Haystack
 ## Installation
 1. Clone the repository:
    ```
-   git clone https://github.com/CodeTrek/haystack-vscode.git
+   git clone https://github.com/ai-microsoft/haystack-vscode.git
    ```
 2. Navigate to the project directory:
    ```
@@ -32,6 +32,3 @@ Contributions are welcome! Please follow these steps to contribute:
 2. Create a new branch for your feature or bug fix.
 3. Make your changes and commit them.
 4. Push your branch and create a pull request.
-
-## License
-This project is licensed under the MIT License. See the LICENSE file for more details.

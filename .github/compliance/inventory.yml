@@ -1,0 +1,7 @@
+inventory:
+- source: DirectOwners
+  items:
+  - id: jianjunchen@microsoft.com
+  - id: jianlin1@microsoft.com
+  - id: leescott@microsoft.com
+  isProduction: false
