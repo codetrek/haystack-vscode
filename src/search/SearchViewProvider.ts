@@ -86,6 +86,9 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
           console.log('Search view DOM loaded');
           this._searchHandlers.handleDomLoaded();
           break;
+        case 'cancelSearch':
+          this._searchHandlers.cancelSearch(webviewView.webview);
+          break;
       }
     });
 
@@ -139,6 +142,17 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
 
     // Use the search handlers to perform the search immediately
     this._searchHandlers.handleSearch(this._view.webview, text, defaultOptions);
+  }
+
+  /**
+   * Cancels the current search in the search view
+   */
+  public cancelSearch(): void {
+    if (!this._view) {
+      return;
+    }
+    // Cancel the search using the search handlers
+    this._searchHandlers.cancelSearch(this._view.webview);
   }
 
   /**

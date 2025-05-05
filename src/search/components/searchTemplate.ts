@@ -42,7 +42,7 @@ export function getSearchTemplate(webview: any, extensionUri: vscode.Uri, isHays
         </div>
         <div class="search-options" id="searchOptions">
           <div class="search-option">
-            <input type="text" class="search-input" id="includeFiles" placeholder="Files to include (e.g. *.ts)">
+            <input type="text" class="search-input" id="includeFiles" placeholder="Files to include (e.g. *.ts,core/*)">
           </div>
           <div class="search-option">
             <input type="text" class="search-input" id="excludeFiles" placeholder="Files to exclude">

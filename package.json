@@ -2,9 +2,9 @@
   "name": "haystack-search",
   "displayName": "Haystack Search",
   "description": "A VS Code extension that integrates Haystack for advanced file search capabilities.",
-  "version": "1.1.2",
+  "version": "1.1.3",
   "publisher": "codetrek",
-  "haystackVersion": "1.2.3",
+  "haystackVersion": "1.2.6",
   "repository": "https://github.com/ai-microsoft/haystack-vscode",
   "icon": "resources/icon.png",
   "author": {
@@ -70,16 +70,16 @@
       "properties": {
         "haystack.search.maxResults": {
           "type": "number",
-          "default": 200,
+          "default": 5000,
           "minimum": 10,
-          "maximum": 1000,
+          "maximum": 50000,
           "description": "Maximum number of search results to return"
         },
         "haystack.search.maxResultsPerFile": {
           "type": "number",
-          "default": 50,
+          "default": 500,
           "minimum": 5,
-          "maximum": 500,
+          "maximum": 1000,
           "description": "Maximum number of search results to return per file"
         },
         "haystack.search.useGlobalFilters": {
@@ -129,6 +129,11 @@
         "command": "haystack.startServer",
         "title": "Start Haystack Server",
         "icon": "$(debug-start)"
+      },
+      {
+        "command": "haystack.cancelSearch",
+        "title": "Cancel Searching (ESC)",
+        "icon": "$(stop-circle)"
       }
     ],
     "keybindings": [
@@ -139,20 +144,24 @@
     "menus": {
       "view/title": [
         {
-          "command": "haystack.syncWorkspace",
-          "when": "view == haystackSearch",
+          "command": "haystack.startServer",
+          "when": "view == haystackSearch && haystackInstalled && !haystackConnected",
+          "group": "navigation@0"
+        },
+        {
+          "command": "haystack.cancelSearch",
+          "when": "view == haystackSearch && haystackSearching",
           "group": "navigation@1"
         },
         {
-          "command": "haystack.openSettings",
+          "command": "haystack.syncWorkspace",
           "when": "view == haystackSearch",
           "group": "navigation@2"
         },
         {
-          "command": "haystack.startServer",
-          "when": "view == haystackSearch && haystackInstalled && !haystackConnected",
-          "group": "navigation@0",
-          "icon": "$(debug-start)"
+          "command": "haystack.openSettings",
+          "when": "view == haystackSearch",
+          "group": "navigation@3"
         }
       ]
     }

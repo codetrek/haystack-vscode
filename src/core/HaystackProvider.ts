@@ -196,16 +196,26 @@ export class HaystackProvider {
     }
   }
 
-  async search(query: string, options: {
+  async searchStream(query: string, options: {
     caseSensitive?: boolean;
     include?: string;
     exclude?: string;
     maxResults?: number;
     maxResultsPerFile?: number;
-  }): Promise<{ results: SearchContentResult[]; truncated: boolean }> {
+  }, onResult: (result: SearchContentResult, isDone: boolean) => void, abortSignal?: AbortSignal): Promise<void> {
+    if (!this.haystack || this.haystack.getStatus() !== 'running') {
+      throw new Error('Haystack is not running');
+    }
+
     const searchRequest: SearchContentRequest = {
       workspace: this.workspaceRoot,
       query: query,
+      editor: {
+        open_files: this.getAllOpenTextDocumentPaths(),
+        active_file: vscode.window.activeTextEditor?.document?.uri
+          ? vscode.workspace.asRelativePath(vscode.window.activeTextEditor.document.uri)
+          : ''
+      },
       case_sensitive: options.caseSensitive,
       filters: {
         include: options.include,
@@ -218,18 +228,137 @@ export class HaystackProvider {
     };
 
     try {
-      const response = await this.post(SEARCH_CONTENT_URL, searchRequest);
-      if (response.data.code === 0) {
-        return {
-          results: response.data.data?.results || [],
-          truncated: response.data.data?.truncate || false
-        };
-      } else {
-        console.log(`Search returned no results: ${response.data.message || 'Unknown reason'}`);
-        return { results: [], truncated: false };
+      // Get the stream from the Haystack API
+      const stream = await this.haystack.postStream(SEARCH_CONTENT_URL, searchRequest);
+
+      if (!stream) {
+        // If stream isn't available, call onResult with empty result and isDone=true
+        onResult({
+          file: '',
+          lines: [],
+          truncate: false
+        }, true);
+        return;
+      }
+
+      // Create a TextDecoder to decode the response chunks
+      const decoder = new TextDecoder();
+
+      // Create a reader to read the stream
+      const reader = stream.getReader();
+
+      // Process each chunk of data from the stream
+      let buffer = '';
+      let done = false;
+
+      // Add abort handler
+      if (abortSignal) {
+        abortSignal.addEventListener('abort', () => {
+          console.log('Search aborted by user');
+          done = true;
+          // Release the reader to stop receiving chunks
+          reader.cancel('Search cancelled by user').catch(error => {
+            console.error('Error cancelling reader:', error);
+          });
+          // Notify caller of the aborted search
+          onResult({
+            file: '',
+            lines: [],
+            truncate: false
+          }, true);
+        }, { once: true });
+      }
+
+      while (!done) {
+        // Check if search was aborted
+        if (abortSignal?.aborted) {
+          break;
+        }
+
+        // Read the next chunk
+        const { value, done: isDone } = await reader.read();
+
+        if (isDone) {
+          done = true;
+          // Process any remaining data in the buffer
+          if (buffer.trim()) {
+            try {
+              this.processEventData(buffer, onResult, true);
+            } catch (e) {
+              console.error('Error processing final SSE chunk:', e);
+            }
+          }
+          break;
+        }
+
+        // Append the new chunk to the buffer
+        buffer += decoder.decode(value, { stream: true });
+
+        // Process any complete events in the buffer
+        const eventEndIndex = buffer.lastIndexOf('\n\n');
+        if (eventEndIndex > -1) {
+          // Extract complete events
+          const eventsData = buffer.substring(0, eventEndIndex);
+          // Keep the rest in the buffer
+          buffer = buffer.substring(eventEndIndex + 2);
+
+          // Process each event
+          this.processEventData(eventsData, onResult, false);
+        }
       }
     } catch (error) {
-      throw new Error(`Failed to connect to Haystack server: ${error}`);
+      // Don't report an error if the search was aborted
+      if (abortSignal?.aborted) {
+        console.log('Search aborted, suppressing error');
+        return;
+      }
+
+      console.error(`Search streaming error: ${error}`);
+      // Notify caller of the error
+      onResult({
+        file: '',
+        lines: [],
+        truncate: false
+      }, true);
+    }
+  }
+
+  private processEventData(eventsData: string, onResult: (result: SearchContentResult, isDone: boolean) => void, isFinal: boolean): void {
+    // Split the data into individual events
+    const events = eventsData.split('\n\n').filter(event => event.trim());
+
+    for (let i = 0; i < events.length; i++) {
+      const event = events[i];
+      const lines = event.split('\n');
+
+      // Extract event type and data
+      let eventType = '';
+      let eventData = '';
+
+      for (const line of lines) {
+        if (line.startsWith('event:')) {
+          eventType = line.substring(6).trim();
+        } else if (line.startsWith('data:')) {
+          eventData = line.substring(5).trim();
+        }
+      }
+
+      // Process based on event type
+      if (eventType === 'result' && eventData) {
+        try {
+          // Send the result to the callback
+          onResult(JSON.parse(eventData), false);
+        } catch (e) {
+          console.error('Error parsing SSE event data:', e);
+        }
+      } else if (eventType === 'done' && eventData) {
+        try {
+          // Process completion event
+          onResult(JSON.parse(eventData), true);
+        }catch (e) {
+          onResult({file: '', lines: [], truncate: false}, true);
+        }
+      }
     }
   }
 
@@ -420,5 +549,45 @@ export class HaystackProvider {
       this.periodicTaskInterval = null;
     }
     this.stopStatusUpdates();
+  }
+
+  /**
+   * Get paths for all open tabs in VSCode
+   * This method collects all open tabs including visible and non-visible ones
+   */
+  private getAllOpenTextDocumentPaths(): string[] {
+    // Get all open text documents in the workspace
+    const allOpenDocs = vscode.workspace.textDocuments;
+
+    // Get visible editors for tabs that are currently visible
+    const visibleEditors = vscode.window.visibleTextEditors;
+
+    // Combine both sources to ensure we get all tabs
+    const allPaths: string[] = [];
+
+    // Add paths from all text documents
+    allOpenDocs
+      .filter(doc => doc.uri && doc.uri.scheme === 'file')
+      .forEach(doc => {
+        const relativePath = vscode.workspace.asRelativePath(doc.uri);
+        if (!allPaths.includes(relativePath)) {
+          allPaths.push(relativePath);
+        }
+      });
+
+    // Add paths from visible editors (some tabs might not be in text documents)
+    visibleEditors
+      .filter(editor => editor.document && editor.document.uri && editor.document.uri.scheme === 'file')
+      .forEach(editor => {
+        const relativePath = vscode.workspace.asRelativePath(editor.document.uri);
+        if (!allPaths.includes(relativePath)) {
+          allPaths.push(relativePath);
+        }
+      });
+
+    // Log the number of paths found for debugging
+    console.log(`Found ${allPaths.length} open tabs in VSCode`);
+
+    return allPaths;
   }
 }

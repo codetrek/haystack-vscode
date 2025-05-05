@@ -28,9 +28,15 @@ export interface SearchFilters {
   exclude?: string;
 }
 
+export interface EditorContext {
+  open_files?: string[];
+  active_file?: string;
+}
+
 export interface SearchContentRequest {
   workspace?: string;
   query: string;
+  editor: EditorContext;
   case_sensitive?: boolean;
   filters?: SearchFilters;
   limit?: SearchLimit;
@@ -64,7 +70,7 @@ export interface SearchContentResponse {
 }
 
 export interface SearchMessage {
-  type: 'search' | 'openFile' | 'focusSearchInput' | 'domLoaded' | 'visibilityChanged';
+  type: 'search' | 'openFile' | 'focusSearchInput' | 'domLoaded' | 'visibilityChanged' | 'cancelSearch';
   query?: string;
   options?: {
     caseSensitive: boolean;

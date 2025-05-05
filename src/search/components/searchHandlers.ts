@@ -3,6 +3,8 @@ import { HaystackProvider } from '../../core/HaystackProvider';
 import { SearchContentResult, SearchContentRequest } from '../../types/search';
 
 export class SearchHandlers {
+  private abortController: AbortController | null = null;
+
   constructor(private readonly haystackProvider: HaystackProvider) {}
 
   async handleSearch(webview: vscode.Webview, query: string, options: {
@@ -13,31 +15,83 @@ export class SearchHandlers {
     maxResultsPerFile?: number;
   }) {
     try {
+      // Cancel any ongoing search first
+      this.cancelSearch();
+
+      // Create a new abort controller for this search
+      this.abortController = new AbortController();
+
       // Get configuration values
       const config = vscode.workspace.getConfiguration('haystack.search');
-      const maxResults = options.maxResults || config.get<number>('maxResults', 200);
-      const maxResultsPerFile = options.maxResultsPerFile || config.get<number>('maxResultsPerFile', 50);
+      const maxResults = options.maxResults || config.get<number>('maxResults', 1000);
+      const maxResultsPerFile = options.maxResultsPerFile || config.get<number>('maxResultsPerFile', 100);
 
-      const searchResult = await this.haystackProvider.search(query, {
-        caseSensitive: options.caseSensitive,
-        include: options.include,
-        exclude: options.exclude,
-        maxResults: maxResults,
-        maxResultsPerFile: maxResultsPerFile
-      });
-
+      // Send initial message to indicate search has started
       webview.postMessage({
-        type: 'searchResults',
-        results: searchResult.results || [],
-        truncated: searchResult.truncated
+        type: 'searchStarted',
+        query: query
       });
+
+      await vscode.commands.executeCommand('setContext', 'haystackSearching', true);
+      await this.haystackProvider.searchStream(
+        query,
+        {
+          caseSensitive: options.caseSensitive,
+          include: options.include,
+          exclude: options.exclude,
+          maxResults: maxResults,
+          maxResultsPerFile: maxResultsPerFile
+        },
+        (result, isDone) => {
+          // Check for the completion marker
+          if (isDone) {
+            webview.postMessage({
+              type: 'searchResultStream',
+              truncated: result.truncate || false,
+              isDone: true
+            });
+            this.abortController = null; // Clear the abort controller after completion
+            vscode.commands.executeCommand('setContext', 'haystackSearching', false);
+            return;
+          }
+
+          // Only send valid results (with a non-empty file path)
+          if (result.file) {
+            // Send each result to the webview as it arrives
+            webview.postMessage({
+              type: 'searchResultStream',
+              result: result,
+              isDone: false
+            });
+          }
+        },
+        this.abortController.signal
+      );
     } catch (error) {
       console.log(`Search error: ${error}`);
+
+      // Also send a search results message to properly close the search
       webview.postMessage({
-        type: 'searchResults',
-        results: [],
-        truncated: false
+        type: 'searchResultStream',
+        truncated: false,
+        isDone: true
       });
+      this.abortController = null; // Clear the abort controller after completion
+      vscode.commands.executeCommand('setContext', 'haystackSearching', false);
+    }
+  }
+
+  cancelSearch(webview?: vscode.Webview) {
+    if (this.abortController) {
+      // If webview is provided, send confirmation that search was cancelled
+      if (webview) {
+        webview.postMessage({
+          type: 'searchCancelled'
+        });
+      }
+
+      this.abortController.abort();
+      this.abortController = null;
     }
   }
 

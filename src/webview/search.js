@@ -2,6 +2,9 @@
     // VS Code API
     const vscode = acquireVsCodeApi();
     let isSearching = false; // Add a flag to track search status
+    let isTruncated = false; // Track if results are truncated
+    let isCancelled = false; // Track if search is cancelled
+    let streamResults = []; // Track streaming results
 
     // Add HTML escaping function
     function escapeHTML(str) {
@@ -20,6 +23,7 @@
             return;
         }
         isSearching = true; // Set searching flag
+        streamResults = []; // Reset streaming results
 
         const query = document.getElementById('searchInput').value;
         if (!query) {
@@ -46,40 +50,43 @@
         });
     }
 
-    // Display results function
-    function displayResults(message) {
-        isSearching = false; // Reset searching flag when results are received
+    function cancelSearch() {
+        if (isSearching) {
+            vscode.postMessage({
+                type: 'cancelSearch'
+            });
+            // isSearching = false; // Reset flag
+            // isCancelled = true; // Set cancelled flag
+            // updateSearchSummary(); // Update summary
+        }
+    }
 
-        const container = document.getElementById('searchResults');
-        if (!container) return;
-
-        // Clear the container (remove spinner or previous results)
-        container.innerHTML = '';
-
-        const results = message.results;
-
-        if (!results || results.length === 0) {
-            const emptyMessage = document.createElement('div');
-            emptyMessage.className = 'search-summary';
-            emptyMessage.textContent = 'No results found';
-            container.appendChild(emptyMessage);
-            return;
+    // Display a single result from the stream
+    function displayStreamResult(result, isFirst, container) {
+        if (!result.file) {
+            return; // Skip invalid results
         }
 
-        const totalMatches = results.reduce((sum, result) => sum + (result.lines?.length || 0), 0);
-        const summary = document.createElement('div');
-        summary.className = 'search-summary';
+        if (isFirst) {
+            // For the first result, clear the container (remove spinner)
+            container.innerHTML = '';
 
-        if (message.truncated) {
-            summary.textContent = `${totalMatches} results in ${results.length} files (Results truncated, showing partial matches)`;
-        } else {
-            summary.textContent = `${totalMatches} results in ${results.length} files`;
+            // Add the initial search summary that will be updated as more results come in
+            const summary = document.createElement('div');
+            summary.id = 'search-summary';
+            summary.className = 'search-summary';
+            summary.textContent = 'Searching...';
+            container.appendChild(summary);
         }
-        container.appendChild(summary);
 
-        results.forEach(result => {
-            const fileGroup = document.createElement('div');
+        // Find existing file group or create a new one
+        let fileGroup = document.querySelector(`.file-group[data-file="${result.file}"]`);
+
+        if (!fileGroup) {
+            // Create new file group for this file
+            fileGroup = document.createElement('div');
             fileGroup.className = 'file-group';
+            fileGroup.dataset.file = result.file;
 
             const fileHeader = document.createElement('div');
             fileHeader.className = 'file-header';
@@ -96,6 +103,7 @@
             const matchCount = document.createElement('span');
             matchCount.className = 'match-count';
             matchCount.textContent = result.lines?.length || 0;
+            matchCount.dataset.count = result.lines?.length || 0;
 
             // Add elements in left-to-right order: toggle icon, file path, match count
             fileHeader.appendChild(toggleIcon);
@@ -106,67 +114,6 @@
             // Create a container for the results to allow for collapsing
             const fileResults = document.createElement('div');
             fileResults.className = 'file-results';
-
-            if (result.lines) {
-                result.lines.forEach(match => {
-                    const matchDiv = document.createElement('div');
-                    matchDiv.className = 'result-item';
-
-                    const lineNumberSpan = document.createElement('span');
-                    lineNumberSpan.className = 'line-number';
-                    lineNumberSpan.textContent = match.line.line_number.toString();
-
-                    const lineContentSpan = document.createElement('span');
-                    lineContentSpan.className = 'line-content';
-
-                    let content = match.line.content;
-                    let highlightedContent = '';
-
-                    const matchPositions = match.line.match || [];
-                    if (matchPositions.length >= 2) {
-                        const start = matchPositions[0];
-                        const end = matchPositions[1];
-
-                        const beforeMatch = content.substring(0, start);
-                        const truncatedBefore = beforeMatch.length > 12
-                            ? '...' + beforeMatch.substring(beforeMatch.length - 12)
-                            : beforeMatch;
-
-                        highlightedContent += escapeHTML(truncatedBefore);
-                        highlightedContent += `<span class="match-highlight">${escapeHTML(content.substring(start, end))}</span>`;
-
-                        const afterMatch = content.substring(end);
-                        const truncatedAfter = afterMatch.length > 128
-                            ? afterMatch.substring(0, 128) + '...'
-                            : afterMatch;
-                        highlightedContent += escapeHTML(truncatedAfter);
-
-                        matchDiv.dataset.start = start;
-                        matchDiv.dataset.end = end;
-                    } else {
-                        highlightedContent = escapeHTML(content.length > 160
-                            ? content.substring(0, 160) + '...'
-                            : content);
-                    }
-
-                    lineContentSpan.innerHTML = highlightedContent;
-
-                    matchDiv.appendChild(lineNumberSpan);
-                    matchDiv.appendChild(lineContentSpan);
-
-                    matchDiv.addEventListener('click', () => {
-                        vscode.postMessage({
-                            type: 'openFile',
-                            file: result.file,
-                            line: match.line.line_number,
-                            start: matchDiv.dataset.start ? parseInt(matchDiv.dataset.start) : undefined,
-                            end: matchDiv.dataset.end ? parseInt(matchDiv.dataset.end) : undefined
-                        });
-                    });
-                    fileResults.appendChild(matchDiv);
-                });
-            }
-
             fileGroup.appendChild(fileResults);
 
             // Add click handler for collapsing/expanding
@@ -180,10 +127,120 @@
             });
 
             container.appendChild(fileGroup);
-        });
+        } else {
+            // Update match count for existing file group
+            const matchCount = fileGroup.querySelector('.match-count');
+            const currentCount = parseInt(matchCount.dataset.count || '0', 10);
+            const newCount = currentCount + (result.lines?.length || 0);
+            matchCount.textContent = newCount;
+            matchCount.dataset.count = newCount;
+        }
+
+        // Find the file results container
+        const fileResults = fileGroup.querySelector('.file-results');
+
+        // Add the search result lines
+        if (result.lines) {
+            result.lines.forEach(match => {
+                const matchDiv = document.createElement('div');
+                matchDiv.className = 'result-item';
+
+                const lineNumberSpan = document.createElement('span');
+                lineNumberSpan.className = 'line-number';
+                lineNumberSpan.textContent = match.line.line_number.toString();
+
+                const lineContentSpan = document.createElement('span');
+                lineContentSpan.className = 'line-content';
+
+                let content = match.line.content;
+                let highlightedContent = '';
+
+                const matchPositions = match.line.match || [];
+                if (matchPositions.length >= 2) {
+                    const start = matchPositions[0];
+                    const end = matchPositions[1];
+
+                    const beforeMatch = content.substring(0, start);
+                    const truncatedBefore = beforeMatch.length > 12
+                        ? '...' + beforeMatch.substring(beforeMatch.length - 12)
+                        : beforeMatch;
+
+                    highlightedContent += escapeHTML(truncatedBefore);
+                    highlightedContent += `<span class="match-highlight">${escapeHTML(content.substring(start, end))}</span>`;
+
+                    const afterMatch = content.substring(end);
+                    const truncatedAfter = afterMatch.length > 128
+                        ? afterMatch.substring(0, 128) + '...'
+                        : afterMatch;
+                    highlightedContent += escapeHTML(truncatedAfter);
+
+                    matchDiv.dataset.start = start;
+                    matchDiv.dataset.end = end;
+                } else {
+                    highlightedContent = escapeHTML(content.length > 160
+                        ? content.substring(0, 160) + '...'
+                        : content);
+                }
+
+                lineContentSpan.innerHTML = highlightedContent;
+
+                matchDiv.appendChild(lineNumberSpan);
+                matchDiv.appendChild(lineContentSpan);
+
+                matchDiv.addEventListener('click', () => {
+                    vscode.postMessage({
+                        type: 'openFile',
+                        file: result.file,
+                        line: match.line.line_number,
+                        start: matchDiv.dataset.start ? parseInt(matchDiv.dataset.start) : undefined,
+                        end: matchDiv.dataset.end ? parseInt(matchDiv.dataset.end) : undefined
+                    });
+                });
+                fileResults.appendChild(matchDiv);
+            });
+        }
+
+        // Update the search summary
+        updateSearchSummary();
     }
 
-    // Set up direct event listeners
+    // Update the search summary with current counts
+    function updateSearchSummary() {
+        const summary = document.getElementById('search-summary');
+        if (!summary) return;
+
+        // Calculate file count and total matches directly from streamResults
+        const uniqueFiles = new Set(streamResults.map(result => result.file).filter(Boolean));
+        const fileCount = uniqueFiles.size;
+
+        let totalMatches = 0;
+        streamResults.forEach(result => {
+            totalMatches += result.lines?.length || 0;
+        });
+
+        if (isSearching) {
+            summary.textContent = `${totalMatches} results in ${fileCount} files (searching...)`;
+        } else if (isCancelled) {
+            summary.textContent = `${totalMatches} results in ${fileCount} files (cancelled)`;
+        } else {
+            if (isTruncated) {
+                summary.textContent = `${totalMatches} results in ${fileCount} files (Results truncated, showing partial matches)`;
+            } else {
+                summary.textContent = `${totalMatches} results in ${fileCount} files`;
+            }
+        }
+    }
+
+    var onkeydown = function(e) {
+        if (e.key === 'Enter' || e.keyCode === 13) {
+            performSearch();
+            return false;
+        }
+        if (e.key === 'Escape' || e.keyCode === 27) {
+            cancelSearch();
+            return false;
+        }
+    }
 
     // Search input Enter key handler
     var searchInput = document.getElementById('searchInput');
@@ -197,12 +254,7 @@
             }
         });
 
-        searchInput.onkeydown = function(e) {
-            if (e.key === 'Enter' || e.keyCode === 13) {
-                performSearch();
-                return false;
-            }
-        };
+        searchInput.onkeydown = onkeydown
     }
 
     // Clear text button handler
@@ -218,6 +270,8 @@
                 if (resultsContainer) {
                     resultsContainer.innerHTML = '';
                 }
+
+                cancelSearch(); // Cancel any ongoing search
             }
         };
     }
@@ -225,23 +279,13 @@
     // Include files Enter key handler
     var includeFiles = document.getElementById('includeFiles');
     if (includeFiles) {
-        includeFiles.onkeydown = function(e) {
-            if (e.key === 'Enter' || e.keyCode === 13) {
-                performSearch();
-                return false;
-            }
-        };
+        includeFiles.onkeydown = onkeydown
     }
 
     // Exclude files Enter key handler
     var excludeFiles = document.getElementById('excludeFiles');
     if (excludeFiles) {
-        excludeFiles.onkeydown = function(e) {
-            if (e.key === 'Enter' || e.keyCode === 13) {
-                performSearch();
-                return false;
-            }
-        };
+        excludeFiles.onkeydown = onkeydown
     }
 
     // Case sensitive button click handler
@@ -296,8 +340,49 @@
     // Message handler
     window.addEventListener('message', function(event) {
         var message = event.data;
-        if (message.type === 'searchResults') {
-            displayResults(message);
+        if (message.type === 'searchStarted') {
+            // Handle search started event
+            isSearching = true;
+            isCancelled = false;
+            isTruncated = false;
+            streamResults = [];
+            updateSearchSummary();
+        } else if (message.type === 'searchResultStream') {
+            if (!isSearching) {
+                return; // Ignore if not searching
+            }
+
+            // Handle streaming search result
+            const container = document.getElementById('searchResults');
+            if (message.result && message.result.file) {
+                if (container) {
+                    // Track the result
+                    streamResults.push(message.result);
+
+                    // Display each result as it arrives
+                    const isFirst = streamResults.length === 1;
+                    displayStreamResult(message.result, isFirst, container);
+                }
+            }
+
+            // If this is the last result, mark search as complete
+            if (message.isDone) {
+                console.log('Search completed:', message);
+                isSearching = false;
+                isTruncated = message.truncated || false;
+
+                if (streamResults.length === 0) {
+                    container.innerHTML = '';
+                    // Add the initial search summary that will be updated as more results come in
+                    const summary = document.createElement('div');
+                    summary.id = 'search-summary';
+                    summary.className = 'search-summary';
+                    summary.textContent = 'No results found';
+                    container.appendChild(summary);
+                }
+
+                updateSearchSummary();
+            }
         } else if (message.type === 'setSearchText') {
             // Handle setting search text from editor selection
             const searchInput = document.getElementById('searchInput');
@@ -326,6 +411,15 @@
                 if (searchInput && searchInput.value.trim() && resultsContainer && !resultsContainer.hasChildNodes()) {
                     performSearch();
                 }
+            }
+        } else if (message.type === 'searchCancelled') {
+            // Handle search cancellation confirmation from backend
+            if (isSearching) {
+                console.log('Search cancelled');
+                // Handle search cancellation
+                isSearching = false;
+                isCancelled = true;
+                updateSearchSummary();
             }
         }
     });

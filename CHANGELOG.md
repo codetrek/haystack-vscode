@@ -1,5 +1,11 @@
 # Changelog
 
+## [1.1.3]
+- Upgrade haystack core to v1.2.6
+- Streaming search result
+- Increase maximum search result
+- Sort documents while searching
+
 ## [1.1.2]
  - Remove default keybind CTRL+SHIFT+F, as it's the VSCode's top popular keyboard shortcut.
 

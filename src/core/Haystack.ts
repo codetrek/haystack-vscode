@@ -150,6 +150,42 @@ export class Haystack extends EventEmitter {
     }
   }
 
+  public async postStream(uri: string, data: any): Promise<ReadableStream<Uint8Array>> {
+    if (this._status !== 'running') {
+      throw new Error('Haystack is not running');
+    }
+
+    try {
+      const url = `${this.getUrl()}${uri}`;
+
+      // Use fetch API for streaming capabilities
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'text/event-stream'
+        },
+        body: JSON.stringify(data)
+      });
+
+      if (!response.ok) {
+        throw new Error(`Server responded with status: ${response.status}`);
+      }
+
+      this.connected = true;
+
+      // Return the readable stream from the response
+      return response.body as ReadableStream<Uint8Array>;
+    } catch (error: any) {
+      const errorMessage = error.message || String(error);
+      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
+        this.connected = false;
+      }
+
+      throw error;
+    }
+  }
+
   public set connected(newStatus: boolean) {
     if (this._connected === newStatus) {
       return;

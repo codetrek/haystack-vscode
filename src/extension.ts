@@ -118,6 +118,15 @@ export async function activate(context: vscode.ExtensionContext) {
         })
     );
 
+    // Register command to cancel search
+    context.subscriptions.push(
+        vscode.commands.registerCommand('haystack.cancelSearch', async () => {
+            try {
+                searchViewProvider?.cancelSearch();
+            } catch (error) {}
+        })
+    );
+
     // Register command to start Haystack server
     context.subscriptions.push(
         vscode.commands.registerCommand('haystack.startServer', async () => {
