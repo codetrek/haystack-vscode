@@ -16,3 +16,4 @@ node_modules/
 .haystack/
 
 /pkgs/
+/pre-pkgs/

@@ -37,7 +37,8 @@ coverage/**
 docs/**
 .prettierrc
 .editorconfig
-./convert-svg-to-png.js
+convert-svg-to-png.js
+pre-pkgs/**
 
 # Only keep compiled dist directory and necessary resource files
 # dist/** - already included in package.json files field

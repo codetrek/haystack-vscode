@@ -22,7 +22,7 @@ module.exports = {
     libraryTarget: 'commonjs2',
     clean: true
   },
-  devtool: isProd ? 'source-map' : 'eval-source-map',
+  devtool: 'source-map',
   externals: {
     vscode: 'commonjs vscode'
   },

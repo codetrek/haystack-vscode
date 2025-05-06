@@ -1,5 +1,8 @@
 # Changelog
 
+## [1.1.4]
+- Bugfix: upgrade haystack core may failed.
+
 ## [1.1.3]
 - Upgrade haystack core to v1.2.6
 - Streaming search result

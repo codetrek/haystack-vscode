@@ -127,7 +127,9 @@ export class Haystack extends EventEmitter {
       downloadedSize: 0,
       percent: 0
     };
-    this.doInit();
+    setTimeout(async () => {
+      await this.doInit();
+    }, 1);
   }
 
   public async post(uri: string, data: any) {
@@ -399,18 +401,20 @@ export class Haystack extends EventEmitter {
   }
 
   private async downloadFile(url: string, destination: string): Promise<void> {
+    let err: any;
     for (let i = 0; i < 3; i++) {
       try {
         // Check if the file already exists
         await this.downloadFileWithNoRetry(url, destination);
         return;
       } catch (error) {
-        // If the file doesn't exist or is too small, proceed with download
-        console.error(`Download failed: ${error}`);
+        err = error;
       }
       // delay before retrying
       await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
     }
+
+    throw new Error(`Failed to download file after 3 attempts: ${url}, err: ${err}`);
   }
 
   private async downloadFileWithNoRetry(url: string, destination: string): Promise<void> {
@@ -587,7 +591,7 @@ export class Haystack extends EventEmitter {
       if (this.isVersionCompatible(version)) {
         return
       }
-      fs.promises.unlink(this.coreFilePath);
+      await fs.promises.unlink(this.coreFilePath);
       this.installStatus = 'not-installed';
       console.log("The installed Haystack is not compatible.");
     } catch (error) {
@@ -597,7 +601,7 @@ export class Haystack extends EventEmitter {
     await this.shutdown();
 
     try {
-      fs.promises.unlink(this.coreFilePath);
+      await fs.promises.unlink(this.coreFilePath);
       this.installStatus = 'not-installed';
     } catch (error) {
       console.error(`Failed to unlink Haystack core file: ${error}`);
@@ -612,28 +616,28 @@ export class Haystack extends EventEmitter {
       await this.waitingForShutdown();
       this.status = 'initializing';
       console.log("Haystack server stopped for upgrade.");
-    } catch (error) {}
+    } catch (error) {
+      console.log("Shutdown Haystack server failed:", error);
+    }
   }
 
   private async waitingForShutdown(): Promise<void> {
     const start = Date.now();
-    try {
-      for (;;) {
-        const elapsedSeconds = (Date.now() - start) / 1000;
-        if (elapsedSeconds > 20) {
-          console.log("Haystack server shutdown timeout.");
-          return
-        }
-
-        const url = `${this.getUrl()}/api/v1/server/status`;
-        const response = await axios.get(url);
-        if (response.status !== 200) {
-          return
-        }
-
-        await new Promise(resolve => setTimeout(resolve, 200));
+    for (;;) {
+      const elapsedSeconds = (Date.now() - start) / 1000;
+      if (elapsedSeconds > 20) {
+        console.log("Haystack server shutdown timeout.");
+        return
       }
-    } catch (error) {
+
+      const url = `${this.getUrl()}/api/v1/server/status`;
+      try {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        await axios.get(url);
+      } catch (error) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
+        return
+      }
     }
   }
 
