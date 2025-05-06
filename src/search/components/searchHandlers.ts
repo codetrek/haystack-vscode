@@ -1,11 +1,14 @@
 import * as vscode from 'vscode';
 import { HaystackProvider } from '../../core/HaystackProvider';
-import { SearchContentResult, SearchContentRequest } from '../../types/search';
 
 export class SearchHandlers {
   private abortController: AbortController | null = null;
+  private workspaceRoot: string;
 
-  constructor(private readonly haystackProvider: HaystackProvider) {}
+  constructor(private readonly haystackProvider: HaystackProvider) {
+    const workspaceFolders = vscode.workspace.workspaceFolders;
+    this.workspaceRoot = workspaceFolders ? workspaceFolders[0].uri.fsPath : '';
+  }
 
   async handleSearch(webview: vscode.Webview, query: string, options: {
     caseSensitive: boolean;
@@ -97,29 +100,42 @@ export class SearchHandlers {
 
   async handleOpenFile(file: string, line: number, start?: number, end?: number) {
     try {
-      const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
-      if (!workspaceRoot) {
+      if (!this.workspaceRoot) {
         throw new Error('No workspace folder found');
       }
 
-      const fullPath = file.startsWith(workspaceRoot)
+      const fullPath = file.startsWith(this.workspaceRoot)
         ? file
-        : vscode.Uri.joinPath(vscode.Uri.file(workspaceRoot), file).fsPath;
+        : vscode.Uri.joinPath(vscode.Uri.file(this.workspaceRoot), file).fsPath;
 
       const uri = vscode.Uri.file(fullPath);
-      const document = await vscode.workspace.openTextDocument(uri);
-      const editor = await vscode.window.showTextDocument(document);
+      let document: any;
+      vscode.workspace.textDocuments.forEach((doc) => {
+        if (doc.uri.fsPath === uri.fsPath) {
+          // If the document is already open, we can just reveal it
+          document = doc;
+          return;
+        }
+      });
 
-      const position = new vscode.Position(line - 1, 0);
-      editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
+      if (!document) {
+        // If the document is not open, we need to open it
+        document = await vscode.workspace.openTextDocument(uri);
+      }
+
+      const editor = await vscode.window.showTextDocument(document);
 
       if (start !== undefined && end !== undefined) {
         const startPos = new vscode.Position(line - 1, start);
         const endPos = new vscode.Position(line - 1, end);
         editor.selection = new vscode.Selection(startPos, endPos);
+        editor.revealRange(new vscode.Range(startPos, endPos), vscode.TextEditorRevealType.InCenter);
       } else {
+        const position = new vscode.Position(line - 1, 0);
         editor.selection = new vscode.Selection(position, position);
+        editor.revealRange(new vscode.Range(position, position), vscode.TextEditorRevealType.InCenter);
       }
+
     } catch (error) {
       vscode.window.showErrorMessage(`Failed to open file: ${error}`);
     }
