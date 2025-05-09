@@ -12,3 +12,7 @@ configuration:
     role: Maintain
   - member: leescott
     role: Maintain
+  - team: haystackmaintainer
+    role: Maintain
+  - team: haystackdevs
+    role: Write
