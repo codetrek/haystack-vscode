@@ -1,7 +1,8 @@
 # Changelog
 
-## [next]
+## [1.1.5]
 - Improve the performance of click go to search result.
+- Upgrade haystack core to v1.3.0
 
 ## [1.1.4]
 - Bugfix: upgrade haystack core may failed.

@@ -2,9 +2,9 @@
   "name": "haystack-search",
   "displayName": "Haystack Search",
   "description": "A VS Code extension that integrates Haystack for advanced file search capabilities.",
-  "version": "1.1.4",
+  "version": "1.1.5",
   "publisher": "codetrek",
-  "haystackVersion": "1.2.6",
+  "haystackVersion": "1.3.0",
   "repository": "https://github.com/ai-microsoft/haystack-vscode",
   "icon": "resources/icon.png",
   "author": {
