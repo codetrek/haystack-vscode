@@ -77,7 +77,12 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
           await this._searchHandlers.handleSearch(webviewView.webview, data.query!, data.options!);
           break;
         case 'openFile':
-          await this._searchHandlers.handleOpenFile(data.file!, data.line!, data.start, data.end);
+          if (data.file && typeof data.line === 'number' && data.workspaceRoot) {
+            await this._searchHandlers.handleOpenFile(data.file, data.line, data.workspaceRoot, data.start, data.end);
+          } else {
+            console.error('Missing data for openFile:', data);
+            vscode.window.showErrorMessage('Could not open file: Missing required information.');
+          }
           break;
         case 'focusSearchInput':
           this._searchHandlers.handleFocusSearchInput(webviewView.webview);
@@ -223,20 +228,27 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
         return;
       }
 
-      const wsStatus = await this._haystackProvider.getWorkspaceStatus();
-      if (wsStatus.error) {
-        this._statusBarItem.text = `$(error) Haystack: (Error)`;
-        this._statusBarItem.tooltip = `Error: ${wsStatus.error}`;
-        this._statusBarItem.show();
-      } else if (wsStatus.indexing) {
-        this._statusBarItem.text = `$(sync~spin) Haystack (indexing)`;
-        this._statusBarItem.tooltip = `Indexing workspace:\n• Indexed: ${wsStatus.totalFiles} files\nYou can search now, but the results may not be accurate`;
-        this._statusBarItem.show();
-      } else {
-        this._statusBarItem.text = `$(check) Haystack (Ready)`;
-        this._statusBarItem.tooltip = `Haystack search is ready\n• Total indexed files: ${wsStatus.totalFiles}\n• Status: Ready for search`;
-        this._statusBarItem.show();
-      }
+      // Get all workspace roots
+      const workspaceFolders = this._haystackProvider.getWorkspaceRoots();
+      let totalFiles = 0;
+      for (const folder of workspaceFolders) {
+        const wsStatus = await this._haystackProvider.getWorkspaceStatus(folder);
+        if (wsStatus.error) {
+          this._statusBarItem.text = `$(error) Haystack: (Error)`;
+          this._statusBarItem.tooltip = `Error: ${wsStatus.error}`;
+          this._statusBarItem.show();
+        } else if (wsStatus.indexing) {
+          totalFiles += wsStatus.totalFiles;
+          this._statusBarItem.text = `$(sync~spin) Haystack (indexing)`;
+          this._statusBarItem.tooltip = `Indexing workspace:\n• Indexed: ${totalFiles} files\nYou can search now, but the results may not be accurate`;
+          this._statusBarItem.show();
+        } else {
+          totalFiles += wsStatus.totalFiles;
+          this._statusBarItem.text = `$(check) Haystack (Ready)`;
+          this._statusBarItem.tooltip = `Haystack search is ready\n• Total indexed files: ${totalFiles}\n• Status: Ready for search`;
+          this._statusBarItem.show();
+        }
+    }
     } catch (error) {
       console.error(`Failed to update workspace status: ${error}`);
     }

@@ -28,3 +28,19 @@ export function getSearchOptions(): TextSearchOptions {
     excludePattern: { '**/node_modules/**': true }
   };
 }
+
+/**
+ * Canonicalizes a file path.
+ * - Converts to lowercase.
+ * - Replaces all backslashes with forward slashes.
+ * - Removes trailing slashes.
+ * @param filePath The path to canonicalize.
+ * @returns The canonicalized path.
+ */
+export function canonicalizePath(filePath: string): string {
+  if (!filePath) return '';
+  return filePath
+    .toLowerCase()
+    .replace(/\\/g, '/')
+    .replace(/\/+$/, '');
+}

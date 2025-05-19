@@ -84,6 +84,7 @@ export interface SearchMessage {
   start?: number;
   end?: number;
   isVisible?: boolean;
+  workspaceRoot?: string;
 }
 
 export interface Exclude {

@@ -151,6 +151,76 @@ body {
     padding: 4px 8px;
 }
 
+.workspace-group {
+    margin-bottom: 10px;
+    border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.workspace-header {
+    padding: 6px 8px;
+    background-color: var(--vscode-sideBarSectionHeader-background, var(--vscode-editorGroupHeader-tabsBackground));
+    color: var(--vscode-sideBarSectionHeader-foreground, var(--vscode-tab-activeForeground));
+    border-bottom: 1px solid var(--vscode-sideBarSectionHeader-border, var(--vscode-editorGroup-border));
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    user-select: none;
+    font-size: 13px;
+    font-weight: bold;
+    justify-content: space-between; /* Adjust for new count element */
+}
+
+.workspace-header:hover {
+    background-color: var(--vscode-list-hoverBackground);
+}
+
+.workspace-header .toggle-icon {
+    margin-right: 6px;
+    font-size: 16px; /* Consistent with file header toggle */
+    transition: transform 0.2s;
+    flex-shrink: 0; /* Prevent shrinking */
+}
+
+.workspace-header.collapsed .toggle-icon.codicon-chevron-down {
+    transform: rotate(-90deg);
+}
+.workspace-header .toggle-icon.codicon-chevron-right {
+    transform: rotate(0deg); /* Ensure right-chevron is not rotated when collapsed */
+}
+
+
+.workspace-name {
+    flex-grow: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    margin-right: 8px; /* Add some space before the file count */
+}
+
+.workspace-match-count {
+    font-size: 10px;
+    color: var(--vscode-profileBadge-foreground); /* Similar to match-count */
+    padding: 2px 6px;
+    border-radius: 10px;
+    background: var(--vscode-profileBadge-background); /* Similar to match-count */
+    flex-shrink: 0; /* Prevent shrinking */
+    font-weight: normal;
+}
+
+.workspace-results {
+    overflow: hidden;
+    margin-top: 6px;
+    padding: 0 6px;
+    transition: max-height 0.3s ease-out; /* For smooth collapse/expand, if using max-height */
+}
+
+.workspace-results.collapsed {
+    display: none;
+}
+
+
 .file-group {
     margin-bottom: 12px;
     background: var(--vscode-list-inactiveSelectionBackground);
@@ -183,8 +253,11 @@ body {
     font-size: 16px;
 }
 
-.file-header.collapsed .toggle-icon {
+.file-header.collapsed .toggle-icon.codicon-chevron-down {
     transform: rotate(-90deg);
+}
+.file-header .toggle-icon.codicon-chevron-right {
+    transform: rotate(0deg); /* Ensure right-chevron is not rotated when collapsed */
 }
 
 .file-path {

@@ -3,9 +3,7 @@ import * as fs from 'fs';
 import * as path from 'path';
 import axios from 'axios';
 import { exec } from 'child_process';
-import util from 'util';
 import { EventEmitter } from 'events';
-import { time } from 'console';
 
 const supportedPlatforms = {
   "linux-amd64": true,
@@ -228,6 +226,10 @@ export class Haystack extends EventEmitter {
 
   public getRetryCount(): number {
     return this._startRetry;
+  }
+
+  public getDataPath(): string {
+    return path.join(this.context.globalStorageUri.fsPath, 'data');
   }
 
   // Sets the status and emits a status-change event

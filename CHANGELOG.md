@@ -1,5 +1,14 @@
 # Changelog
 
+## [next]
+- Improved the search functionality to index and search across multiple workspace folders and aggregate results.
+- Enhanced the UI to clearly indicate the workspace origin of each search result.
+- Improved file path resolution for better navigation between workspaces.
+- Enhanced error handling for workspace-specific failures.
+- Added collapsible sections for search results to manage large result sets more effectively.
+- Improved the search cancellation process to ensure all searches are stopped correctly.
+- Skipped the updates in .code-workspace file to avoid unnecessary reloads.
+
 ## [1.1.5]
 - Improve the performance of click go to search result.
 - Upgrade haystack core to v1.3.0

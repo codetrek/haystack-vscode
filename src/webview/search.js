@@ -5,6 +5,7 @@
     let isTruncated = false; // Track if results are truncated
     let isCancelled = false; // Track if search is cancelled
     let streamResults = []; // Track streaming results
+    let workspaceGroupElements = {}; // To store references to pre-created workspace group containers
 
     // Add HTML escaping function
     function escapeHTML(str) {
@@ -61,32 +62,44 @@
         }
     }
 
+    // Helper function to normalize workspace root paths for grouping
+    // Converts to lowercase, normalizes path separators, and removes trailing slashes for consistent keying.
+    function normalizeWorkspaceRootForKey(path) {
+        if (!path) return '';
+        return path
+            .toLowerCase()
+            .replace(/\\/g, '/') // Replace backslashes with forward slashes
+            .replace(/\/+$/, '');  // Remove trailing slashes
+    }
+
     // Display a single result from the stream
-    function displayStreamResult(result, isFirst, container) {
+    function displayStreamResult(result, container, workspaceRoot, workspaceName) {
         if (!result.file) {
             return; // Skip invalid results
         }
 
-        if (isFirst) {
-            // For the first result, clear the container (remove spinner)
-            container.innerHTML = '';
+        const normalizedWorkspaceKey = normalizeWorkspaceRootForKey(workspaceRoot);
+        // Find the pre-created workspace group
+        const workspaceGroup = workspaceGroupElements[normalizedWorkspaceKey];
 
-            // Add the initial search summary that will be updated as more results come in
-            const summary = document.createElement('div');
-            summary.id = 'search-summary';
-            summary.className = 'search-summary';
-            summary.textContent = 'Searching...';
-            container.appendChild(summary);
+        if (!workspaceGroup) {
+            console.error('Workspace group not found for key:', normalizedWorkspaceKey);
+            return; // Should not happen if pre-creation is correct
         }
+        
+        const workspaceResultsContainer = workspaceGroup.querySelector('.workspace-results');
+        const workspaceMatchCountSpan = workspaceGroup.querySelector('.workspace-match-count');
 
-        // Find existing file group or create a new one
-        let fileGroup = document.querySelector(`.file-group[data-file="${result.file}"]`);
+
+        let fileGroup = workspaceResultsContainer.querySelector(
+            `.file-group[data-relative-path="${result.file}"]`
+        );
 
         if (!fileGroup) {
-            // Create new file group for this file
             fileGroup = document.createElement('div');
             fileGroup.className = 'file-group';
-            fileGroup.dataset.file = result.file;
+            fileGroup.dataset.workspaceRoot = workspaceRoot; 
+            fileGroup.dataset.relativePath = result.file;
 
             const fileHeader = document.createElement('div');
             fileHeader.className = 'file-header';
@@ -124,9 +137,15 @@
                 // Toggle collapsed state
                 fileHeader.classList.toggle('collapsed');
                 fileResults.classList.toggle('collapsed');
+                // Also update the icon for file group
+                const fileToggleIcon = fileHeader.querySelector('.toggle-icon');
+                if (fileToggleIcon) {
+                    fileToggleIcon.classList.toggle('codicon-chevron-down');
+                    fileToggleIcon.classList.toggle('codicon-chevron-right');
+                }
             });
 
-            container.appendChild(fileGroup);
+            workspaceResultsContainer.appendChild(fileGroup);
         } else {
             // Update match count for existing file group
             const matchCount = fileGroup.querySelector('.match-count');
@@ -134,6 +153,15 @@
             const newCount = currentCount + (result.lines?.length || 0);
             matchCount.textContent = newCount;
             matchCount.dataset.count = newCount;
+        }
+
+        // Update workspace total match count based on lines in the current result
+        const matchesInCurrentResult = result.lines?.length || 0;
+        if (matchesInCurrentResult > 0 && workspaceGroup && workspaceMatchCountSpan) {
+            let currentWorkspaceTotalMatches = parseInt(workspaceGroup.dataset.totalMatchCount || '0', 10);
+            currentWorkspaceTotalMatches += matchesInCurrentResult;
+            workspaceGroup.dataset.totalMatchCount = currentWorkspaceTotalMatches.toString();
+            workspaceMatchCountSpan.textContent = `${currentWorkspaceTotalMatches}`;
         }
 
         // Find the file results container
@@ -188,9 +216,15 @@
                 matchDiv.appendChild(lineContentSpan);
 
                 matchDiv.addEventListener('click', () => {
+                    // Retrieve workspaceRoot and relativePath from the fileGroup's dataset
+                    const parentFileGroup = matchDiv.closest('.file-group');
+                    const wsRoot = parentFileGroup.dataset.workspaceRoot;
+                    const relFile = parentFileGroup.dataset.relativePath;
+
                     vscode.postMessage({
                         type: 'openFile',
-                        file: result.file,
+                        file: relFile, // Send relative file path
+                        workspaceRoot: wsRoot, // Send its workspaceRoot
                         line: match.line.line_number,
                         start: matchDiv.dataset.start ? parseInt(matchDiv.dataset.start) : undefined,
                         end: matchDiv.dataset.end ? parseInt(matchDiv.dataset.end) : undefined
@@ -210,12 +244,15 @@
         if (!summary) return;
 
         // Calculate file count and total matches directly from streamResults
-        const uniqueFiles = new Set(streamResults.map(result => result.file).filter(Boolean));
+        // Ensure uniqueness by combining workspaceRoot and file path
+        const uniqueFiles = new Set(
+            streamResults.map(item => `${item.workspaceRoot}::${item.result.file}`).filter(Boolean)
+        );
         const fileCount = uniqueFiles.size;
 
         let totalMatches = 0;
-        streamResults.forEach(result => {
-            totalMatches += result.lines?.length || 0;
+        streamResults.forEach(item => {
+            totalMatches += item.result.lines?.length || 0;
         });
 
         if (isSearching) {
@@ -346,6 +383,72 @@
             isCancelled = false;
             isTruncated = false;
             streamResults = [];
+            workspaceGroupElements = {}; // Reset stored elements
+
+            const container = document.getElementById('searchResults');
+            if (container) {
+                container.innerHTML = ''; // Clear previous results
+
+                // Add the initial search summary that will be updated as more results come in
+                const summary = document.createElement('div');
+                summary.id = 'search-summary';
+                summary.className = 'search-summary';
+                summary.textContent = 'Searching...';
+                container.appendChild(summary);
+
+                // Pre-create workspace groups in the specified order
+                if (message.workspaces && Array.isArray(message.workspaces)) {
+                    message.workspaces.forEach(wsInfo => {
+                        const normalizedKey = normalizeWorkspaceRootForKey(wsInfo.path);
+                        
+                        const group = document.createElement('div');
+                        group.className = 'workspace-group';
+                        group.dataset.normalizedWorkspaceRoot = normalizedKey;
+                        group.dataset.totalMatchCount = '0';
+
+                        const header = document.createElement('div');
+                        header.className = 'workspace-header';
+
+                        const toggleIcon = document.createElement('span');
+                        toggleIcon.className = 'toggle-icon codicon codicon-chevron-down';
+                        
+                        const nameElement = document.createElement('span');
+                        nameElement.className = 'workspace-name';
+                        nameElement.textContent = wsInfo.name || normalizedKey.split(/[/\\]/).pop() || normalizedKey;
+                        
+                        const matchCountSpan = document.createElement('span');
+                        matchCountSpan.className = 'workspace-match-count';
+                        matchCountSpan.textContent = '0';
+
+                        const leftHeaderContent = document.createElement('div');
+                        leftHeaderContent.style.display = 'flex';
+                        leftHeaderContent.style.alignItems = 'center';
+                        leftHeaderContent.style.flexGrow = '1';
+                        leftHeaderContent.style.overflow = 'hidden';
+                        leftHeaderContent.appendChild(toggleIcon);
+                        leftHeaderContent.appendChild(nameElement);
+                        
+                        header.appendChild(leftHeaderContent);
+                        header.appendChild(matchCountSpan);
+                        group.appendChild(header);
+
+                        const resultsContainer = document.createElement('div');
+                        resultsContainer.className = 'workspace-results';
+                        group.appendChild(resultsContainer);
+
+                        header.addEventListener('click', (e) => {
+                            e.stopPropagation();
+                            header.classList.toggle('collapsed');
+                            resultsContainer.classList.toggle('collapsed');
+                            toggleIcon.classList.toggle('codicon-chevron-down');
+                            toggleIcon.classList.toggle('codicon-chevron-right');
+                        });
+                        
+                        container.appendChild(group);
+                        workspaceGroupElements[normalizedKey] = group; // Store reference
+                    });
+                }
+            }
             updateSearchSummary();
         } else if (message.type === 'searchResultStream') {
             if (!isSearching) {
@@ -356,12 +459,16 @@
             const container = document.getElementById('searchResults');
             if (message.result && message.result.file) {
                 if (container) {
-                    // Track the result
-                    streamResults.push(message.result);
+                    // Track the result along with its workspace context
+                    streamResults.push({
+                        result: message.result,
+                        workspaceRoot: message.workspaceRoot, // Store workspaceRoot
+                        workspaceName: message.workspaceName  // Store workspaceName (optional, but good for context)
+                    });
 
-                    // Display each result as it arrives
-                    const isFirst = streamResults.length === 1;
-                    displayStreamResult(message.result, isFirst, container);
+                    // Display each result as it arrives, passing workspaceRoot and workspaceName
+                    // No longer need isFirst, as container setup is done in 'searchStarted'
+                    displayStreamResult(message.result, container, message.workspaceRoot, message.workspaceName);
                 }
             }
 
