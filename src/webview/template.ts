@@ -1,19 +1,49 @@
-import * as vscode from 'vscode';
+import vscode from 'vscode';
+import { readFileSync } from "fs";
+import path from 'path';
 
-export function getSearchTemplate(webview: any, extensionUri: vscode.Uri, isHaystackSupported: boolean) {
-  // Get paths to resource files
-  const scriptUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'search.js'));
-  const styleUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'search.css'));
-  // Get codicons URI
-  const codiconsUri = webview.asWebviewUri(vscode.Uri.joinPath(extensionUri, 'dist', 'webview', 'codicon.css'));
+const localServer = "http://localhost:9000";
+
+export function getSearchTemplate(context: vscode.ExtensionContext, webview: vscode.Webview, isHaystackSupported: boolean) {
+  const nonce = getNonce();
+
+  const localJsFile = webview.asWebviewUri(
+    vscode.Uri.parse(`${localServer}/webview.js`)
+  );
+
+  let scriptUrl = [];
+
+  const isProd = context.extensionMode === vscode.ExtensionMode.Production;
+  if (isProd) {
+    // Get the manifest file from the dist folder
+    const manifest = readFileSync(
+      path.join(context.extensionUri.fsPath, "dist", "webview", "manifest.json"),
+      "utf-8"
+    );
+    const manifestJson = JSON.parse(manifest);
+    for (const [key, value] of Object.entries<string>(manifestJson)) {
+      if (key.endsWith(".js")) {
+        scriptUrl.push(webview.asWebviewUri(
+          vscode.Uri.joinPath(context.extensionUri, "dist", "webview", value)
+        ).toString()
+        );
+      }
+    }
+  } else {
+    scriptUrl.push(localJsFile);
+  }
 
   // Set CSP (Content Security Policy)
+  const devExtraCsp = isProd
+    ? ''
+    : `http://localhost:9000`;
   const csp = `
-    default-src 'none';
-    style-src ${webview.cspSource};
-    script-src ${webview.cspSource};
-    font-src ${webview.cspSource};
-  `;
+        default-src 'none';
+        style-src ${webview.cspSource} 'unsafe-inline';
+        script-src ${webview.cspSource} 'nonce-${nonce}' ${devExtraCsp};
+        font-src ${webview.cspSource} ${devExtraCsp};
+        connect-src 'self' https: ws: ${devExtraCsp};
+    `;
 
   // Conditionally add the warning message
   const platformWarning = !isHaystackSupported
@@ -28,8 +58,6 @@ export function getSearchTemplate(webview: any, extensionUri: vscode.Uri, isHays
       <meta name="viewport" content="width=device-width, initial-scale=1.0">
       <meta http-equiv="Content-Security-Policy" content="${csp}">
       <title>Haystack Search</title>
-      <link href="${codiconsUri}" rel="stylesheet" type="text/css">
-      <link href="${styleUri}" rel="stylesheet" type="text/css">
     </head>
     <body>
       <div class="search-container">
@@ -50,7 +78,7 @@ export function getSearchTemplate(webview: any, extensionUri: vscode.Uri, isHays
         </div>
         <div class="search-results" id="searchResults"></div>
       </div>
-      <script src="${scriptUri}" type="text/javascript"></script>
+      ${scriptUrl.map((url) => `<script src="${url}" nonce="${nonce}" crossorigin="anonymous"></script>`).join("\n")}
     </body>
     </html>
   `;

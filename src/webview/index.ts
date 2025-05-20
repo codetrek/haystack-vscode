@@ -1,4 +1,7 @@
-(function() {
+import "@vscode/codicons/dist/codicon.css";
+import "./style.css";
+
+(function () {
     // VS Code API
     const vscode = acquireVsCodeApi();
     let isSearching = false; // Add a flag to track search status
@@ -268,7 +271,7 @@
         }
     }
 
-    var onkeydown = function(e) {
+    var onkeydown = function (e) {
         if (e.key === 'Enter' || e.keyCode === 13) {
             performSearch();
             return false;
@@ -285,7 +288,7 @@
 
     if (searchInput) {
         // Handle input changes to show/hide clear button
-        searchInput.addEventListener('input', function() {
+        searchInput.addEventListener('input', function () {
             if (clearTextBtn) {
                 clearTextBtn.style.display = this.value ? 'flex' : 'none';
             }
@@ -296,7 +299,7 @@
 
     // Clear text button handler
     if (clearTextBtn) {
-        clearTextBtn.onclick = function() {
+        clearTextBtn.onclick = function () {
             if (searchInput) {
                 searchInput.value = '';
                 this.style.display = 'none';
@@ -328,7 +331,7 @@
     // Case sensitive button click handler
     var caseSensitiveBtn = document.getElementById('caseSensitiveBtn');
     if (caseSensitiveBtn) {
-        caseSensitiveBtn.onclick = function() {
+        caseSensitiveBtn.onclick = function () {
             this.classList.toggle('active');
             if (searchInput && searchInput.value.trim()) {
                 performSearch();
@@ -339,7 +342,7 @@
     // Options toggle button click handler
     var optionsToggle = document.getElementById('optionsToggle');
     if (optionsToggle) {
-        optionsToggle.onclick = function() {
+        optionsToggle.onclick = function () {
             var options = document.getElementById('searchOptions');
             if (options) {
                 options.classList.toggle('visible');
@@ -357,7 +360,7 @@
     }
 
     // DOM Content Loaded event handler
-    document.addEventListener('DOMContentLoaded', function() {
+    document.addEventListener('DOMContentLoaded', function () {
         // Notify VS Code that the DOM has been loaded
         vscode.postMessage({
             type: 'domLoaded'
@@ -375,7 +378,7 @@
     });
 
     // Message handler
-    window.addEventListener('message', function(event) {
+    window.addEventListener('message', function (event) {
         var message = event.data;
         if (message.type === 'searchStarted') {
             // Handle search started event

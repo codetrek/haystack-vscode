@@ -27,7 +27,7 @@ export async function activate(context: vscode.ExtensionContext) {
     // Pass necessary info to HaystackProvider if needed
     // Example: haystackProvider = new HaystackProvider(haystackCoreManager.getCorePath());
     haystackProvider = new HaystackProvider(haystack);
-    searchViewProvider = new SearchViewProvider(context.extensionUri, haystackProvider, haystack.getIsSupported());
+    searchViewProvider = new SearchViewProvider(context, haystackProvider, haystack.getIsSupported());
 
     // Register search view
     context.subscriptions.push(

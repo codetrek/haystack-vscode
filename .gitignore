@@ -17,3 +17,5 @@ node_modules/
 
 /pkgs/
 /pre-pkgs/
+
+.DS_Store

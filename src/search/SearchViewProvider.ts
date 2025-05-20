@@ -1,6 +1,6 @@
 import * as vscode from 'vscode';
 import { HaystackProvider } from '../core/HaystackProvider';
-import { getSearchTemplate } from './components/searchTemplate';
+import { getSearchTemplate } from '../webview/template';
 import { SearchHandlers } from './components/searchHandlers';
 import { SearchContentResult, SearchMessage } from '../types/search';
 
@@ -14,12 +14,14 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
   private _statusUpdateInterval: NodeJS.Timeout | null = null;
   private readonly _isHaystackSupported: boolean;
   private _pendingSearchText?: string;
+  private _extensionUri!: vscode.Uri;
 
   constructor(
-    private readonly _extensionUri: vscode.Uri,
+    private readonly _extensionContext: vscode.ExtensionContext,
     private readonly _haystackProvider: HaystackProvider,
     isHaystackSupported: boolean
   ) {
+    this._extensionUri = _extensionContext.extensionUri;
     this._searchHandlers = new SearchHandlers(_haystackProvider);
     this._statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
@@ -67,7 +69,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
 
     // Set HTML content only if it hasn't been set before
     if (!webviewView.webview.html) {
-      webviewView.webview.html = getSearchTemplate(webviewView.webview, this._extensionUri, this._isHaystackSupported);
+      webviewView.webview.html = getSearchTemplate(this._extensionContext, webviewView.webview, this._isHaystackSupported);
     }
 
     // Handle messages from the webview
