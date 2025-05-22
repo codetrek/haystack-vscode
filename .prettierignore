@@ -1,2 +1,32 @@
+# Build outputs
 dist
+out
+build
+*.vsix
+
+# Dependencies
+node_modules
 package-lock.json
+
+# Generated files
+coverage
+.vscode-test
+*.log
+.DS_Store
+Thumbs.db
+
+# Binary files
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.ico
+*.svg
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Minified files
+*.min.js
+*.min.css
