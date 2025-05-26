@@ -40,45 +40,6 @@ To ensure a smooth debugging experience, please follow these steps:
 4. Press `F5` to launch the extension in debug mode.
    This will run the extension in an isolated environment while sharing the same background Haystack service as the installed extension.
 
-### Package and Share the Extension Offline
-To manually package the extension for offline use, follow these steps:
-1. #### Create `pkg` Directory.
-   In the root of your workspace, create a folder named `pkgs`:
-   ```
-   cd haystack-vscode
-   mkdir pkgs
-   ```
-2. #### Check the Required Haystack Core Version.
-   Open `package.json` and locate the `haystackVersion` field. For example:
-   ```json
-   {
-      // ...
-      "haystackVersion": "1.2.6",
-      // ...
-   }
-   ```
-3. #### Download the Required Haystack Release.
-   Visit [Haystack Releases](https://github.com/ai-microsoft/haystack/releases) page and find the version that matches the one in `package.json`.
-4. #### Save the Binary
-   Download the binary for your target platform and place it in the `pkgs` folder:
-   ```text
-      haystack-vscode
-      ├─ src/
-      ├─ resource/
-      └─ pkgs/
-         ├─ haystack-darwin-amd64-v1.2.6.zip
-         ├─ haystack-darwin-arm64-v1.2.6.zip
-         ├─ haystack-windows-amd64-v1.2.6.zip
-         ├─ haystack-windows-arm64-v1.2.6.zip
-         ├─ ...
-      ...
-   ```
-5. #### Build the Extension
-   In your terminal, run:
-   ```bash
-   npm run build
-   ```
-   This will generate the extension package file in the project root directory as `haystack-search-*.vsix`.
 
 ## Contribution
 Contributions are welcome! Please follow these steps to contribute:
@@ -86,3 +47,20 @@ Contributions are welcome! Please follow these steps to contribute:
 2. Create a new branch for your feature or bug fix.
 3. Make your changes and commit them.
 4. Push your branch and create a pull request.
+
+## Automated Release Process
+This project uses a GitHub Action workflow for automating the release process. The workflow:
+
+1. Reads version and haystackVersion from package.json
+2. Downloads platform-specific Haystack binaries based on haystackVersion
+3. Builds platform-specific VS Code extension packages
+4. Extracts changelog information for the current version
+5. Creates a GitHub release with the generated extension packages
+6. Creates a git tag for the release version
+
+To trigger a new release:
+1. Update the version in package.json
+2. Update CHANGELOG.md with details about the new version
+3. Go to GitHub Actions tab and manually trigger the "Release" workflow
+
+The workflow will generate platform-specific extension packages for Windows, macOS, and Linux (both x64 and ARM64 architectures).

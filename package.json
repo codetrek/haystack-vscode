@@ -220,7 +220,7 @@
     "webpack-merge": "^6.0.1"
   },
   "lint-staged": {
-    "*.{js,ts,tsx,json,css,md,mjs,cjs}": [
+    "*.{js,ts,tsx,json,css,mjs,cjs}": [
       "prettier --write"
     ],
     "*.{js,ts,tsx,mjs,cjs}": [

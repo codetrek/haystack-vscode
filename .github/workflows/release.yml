@@ -1,0 +1,160 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      force_recreate:
+        description: 'Force recreation of the release'
+        required: false
+        default: 'false'
+        type: boolean
+
+# Permissions needed for creating tags and releases
+permissions:
+  contents: write
+  packages: read
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.package-info.outputs.version }}
+      haystackVersion: ${{ steps.package-info.outputs.haystackVersion }}
+      should_release: ${{ steps.check-tag.outputs.should_release }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract package info
+        id: package-info
+        run: |
+          version=$(node -p "require('./package.json').version")
+          haystackVersion=$(node -p "require('./package.json').haystackVersion")
+          echo "version=$version" >> $GITHUB_OUTPUT
+          echo "haystackVersion=$haystackVersion" >> $GITHUB_OUTPUT
+          echo "Version: $version, Haystack Version: $haystackVersion"
+
+      - name: Check if tag exists
+        id: check-tag
+        run: |
+          tag_exists=$(git ls-remote --tags origin refs/tags/v${{ steps.package-info.outputs.version }} | wc -l)
+          if [[ $tag_exists -gt 0 && "${{ github.event.inputs.force_recreate }}" != "true" ]]; then
+            echo "Tag v${{ steps.package-info.outputs.version }} already exists, skipping release"
+            echo "should_release=false" >> $GITHUB_OUTPUT
+          else
+            echo "Creating release for v${{ steps.package-info.outputs.version }}"
+            echo "should_release=true" >> $GITHUB_OUTPUT
+          fi
+
+  build-extension:
+    needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    strategy:
+      matrix:
+        platform: [darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64, windows-arm64]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Create pkgs directory
+        run: mkdir -p pkgs
+
+      - name: Download Haystack binary
+        run: |
+          HAYSTACK_VERSION=${{ needs.prepare.outputs.haystackVersion }}
+          PLATFORM=${{ matrix.platform }}
+          DOWNLOAD_URL="https://github.com/ai-microsoft/haystack/releases/download/v${HAYSTACK_VERSION}/haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip"
+          
+          echo "Downloading Haystack binary from $DOWNLOAD_URL"
+          curl -L -o "pkgs/haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip" "$DOWNLOAD_URL"
+
+      - name: Build extension package
+        run: |
+          # Only include the specific platform's binary
+          HAYSTACK_VERSION=${{ needs.prepare.outputs.haystackVersion }}
+          PLATFORM=${{ matrix.platform }}
+          EXTENSION_VERSION=${{ needs.prepare.outputs.version }}
+          
+          # Build the extension with only the platform-specific binary
+          find pkgs -type f -not -name "haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip" -delete
+          
+          # Build the extension package
+          npm run build:prod
+          
+          # Rename the output file to include platform
+          platform_name=$(echo $PLATFORM | sed 's/-/_/g')
+          npx vsce package --no-dependencies -o "haystack-search-${EXTENSION_VERSION}-${platform_name}.vsix"
+
+      - name: Upload VSIX as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-${{ matrix.platform }}
+          path: "*.vsix"
+          retention-days: 1
+
+  create-release:
+    needs: [prepare, build-extension]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: vsix-*
+          merge-multiple: true
+          path: dist
+
+      - name: Extract changelog
+        id: changelog
+        run: |
+          VERSION=${{ needs.prepare.outputs.version }}
+          CHANGELOG=$(sed -n "/## \[${VERSION}\]/,/## \[/p" CHANGELOG.md | sed '1d;$d')
+          echo "CHANGELOG<<EOF" >> $GITHUB_ENV
+          echo "$CHANGELOG" >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Create release tag
+        run: |
+          git config --local user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git tag -a "v${{ needs.prepare.outputs.version }}" -m "Release v${{ needs.prepare.outputs.version }}"
+          git push origin "v${{ needs.prepare.outputs.version }}"
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v1
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          tag_name: "v${{ needs.prepare.outputs.version }}"
+          name: "Haystack Search v${{ needs.prepare.outputs.version }}"
+          body: |
+            # Haystack Search v${{ needs.prepare.outputs.version }}
+            
+            ${{ env.CHANGELOG }}
+            
+            Using Haystack Core v${{ needs.prepare.outputs.haystackVersion }}
+            
+            ## Platform-specific downloads
+            Please download the extension package for your specific platform:
+            - Windows (x64): haystack-search-${{ needs.prepare.outputs.version }}-windows_amd64.vsix
+            - Windows (ARM64): haystack-search-${{ needs.prepare.outputs.version }}-windows_arm64.vsix
+            - macOS (Intel): haystack-search-${{ needs.prepare.outputs.version }}-darwin_amd64.vsix
+            - macOS (Apple Silicon): haystack-search-${{ needs.prepare.outputs.version }}-darwin_arm64.vsix
+            - Linux (x64): haystack-search-${{ needs.prepare.outputs.version }}-linux_amd64.vsix
+            - Linux (ARM64): haystack-search-${{ needs.prepare.outputs.version }}-linux_arm64.vsix
+          files: dist/*.vsix
+          draft: false
+          prerelease: false
