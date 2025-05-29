@@ -70,9 +70,15 @@ export interface SearchContentResponse {
 }
 
 export interface SearchMessage {
-  type: 'search' | 'openFile' | 'focusSearchInput' | 'domLoaded' | 'visibilityChanged' | 'cancelSearch';
-  query?: string;
-  options?: {
+  type:
+    | 'search'
+    | 'openFile'
+    | 'focusSearchInput'
+    | 'domLoaded'
+    | 'visibilityChanged'
+    | 'cancelSearch';
+  query: string;
+  options: {
     caseSensitive: boolean;
     include: string;
     exclude: string;

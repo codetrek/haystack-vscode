@@ -1,8 +1,8 @@
 import * as vscode from 'vscode';
 import { HaystackProvider } from '../core/HaystackProvider';
-import { getSearchTemplate } from '../webview/template';
+import { getSearchTemplate } from '../template';
 import { SearchHandlers } from './components/searchHandlers';
-import { SearchContentResult, SearchMessage } from '../types/search';
+import { ExtensionMessagePipeline } from '@/message/extension';
 
 export class SearchViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'haystackSearch';
@@ -15,18 +15,16 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
   private readonly _isHaystackSupported: boolean;
   private _pendingSearchText?: string;
   private _extensionUri!: vscode.Uri;
+  private _msgPipeline?: ExtensionMessagePipeline;
 
   constructor(
     private readonly _extensionContext: vscode.ExtensionContext,
     private readonly _haystackProvider: HaystackProvider,
-    isHaystackSupported: boolean
+    isHaystackSupported: boolean,
   ) {
     this._extensionUri = _extensionContext.extensionUri;
     this._searchHandlers = new SearchHandlers(_haystackProvider);
-    this._statusBarItem = vscode.window.createStatusBarItem(
-      vscode.StatusBarAlignment.Left,
-      100
-    );
+    this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     this._isHaystackSupported = isHaystackSupported;
     // Start status updates immediately when the provider is created
     this.startStatusUpdates();
@@ -51,52 +49,55 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
 
   public resolveWebviewView(
     webviewView: vscode.WebviewView,
-    context: vscode.WebviewViewResolveContext,
+    _context: vscode.WebviewViewResolveContext,
     _token: vscode.CancellationToken,
   ) {
     // Store the webview reference
     this._view = webviewView;
-
+    this._msgPipeline = new ExtensionMessagePipeline(webviewView.webview, webviewView.webview);
     // Configure webview options
     webviewView.webview.options = {
       enableScripts: true,
       localResourceRoots: [
         vscode.Uri.joinPath(this._extensionUri, 'resources'),
         vscode.Uri.joinPath(this._extensionUri, 'dist'),
-        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview')
-      ]
+        vscode.Uri.joinPath(this._extensionUri, 'dist', 'webview'),
+      ],
     };
 
     // Set HTML content only if it hasn't been set before
     if (!webviewView.webview.html) {
-      webviewView.webview.html = getSearchTemplate(this._extensionContext, webviewView.webview, this._isHaystackSupported);
+      webviewView.webview.html = getSearchTemplate(
+        this._extensionContext,
+        webviewView.webview,
+        this._isHaystackSupported,
+      );
     }
 
     // Handle messages from the webview
-    webviewView.webview.onDidReceiveMessage(async (data: SearchMessage) => {
-      switch (data.type) {
-        case 'search':
-          await this._searchHandlers.handleSearch(webviewView.webview, data.query!, data.options!);
-          break;
-        case 'openFile':
-          if (data.file && typeof data.line === 'number' && data.workspaceRoot) {
-            await this._searchHandlers.handleOpenFile(data.file, data.line, data.workspaceRoot, data.start, data.end);
-          } else {
-            console.error('Missing data for openFile:', data);
-            vscode.window.showErrorMessage('Could not open file: Missing required information.');
-          }
-          break;
-        case 'focusSearchInput':
-          this._searchHandlers.handleFocusSearchInput(webviewView.webview);
-          break;
-        case 'domLoaded':
-          console.log('Search view DOM loaded');
-          this._searchHandlers.handleDomLoaded();
-          break;
-        case 'cancelSearch':
-          this._searchHandlers.cancelSearch(webviewView.webview);
-          break;
+    this._msgPipeline.on('search', (data) => {
+      this._searchHandlers.handleSearch(this._msgPipeline!, data.query, data.options);
+    });
+    this._msgPipeline.on('cancelSearch', () => {
+      this._searchHandlers.cancelSearch(this._msgPipeline!);
+    });
+    this._msgPipeline.on('openFile', (data) => {
+      if (data.file && typeof data.line === 'number' && data.workspaceRoot) {
+        this._searchHandlers.handleOpenFile(
+          data.file,
+          data.line,
+          data.workspaceRoot,
+          data.start,
+          data.end,
+        );
+      } else {
+        console.error('Missing data for openFile:', data);
+        vscode.window.showErrorMessage('Could not open file: Missing required information.');
       }
+    });
+    this._msgPipeline.on('domLoaded', () => {
+      console.log('Search view DOM loaded');
+      this._searchHandlers.handleDomLoaded();
     });
 
     // Clean up when the view is disposed
@@ -106,7 +107,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
 
     // Handle visibility changes
     webviewView.onDidChangeVisibility(() => {
-      this._searchHandlers.handleVisibilityChange(webviewView.webview, webviewView.visible);
+      this._searchHandlers.handleVisibilityChange(this._msgPipeline!, webviewView.visible);
     });
 
     if (this._pendingSearchText) {
@@ -130,25 +131,25 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
       // and trigger the focus command to create the view
       console.log('Search view not available, creating it first');
       this._pendingSearchText = text;
-      vscode.commands.executeCommand('haystackSearch.focus')
+      vscode.commands.executeCommand('haystackSearch.focus');
       return;
     }
 
     // Send a message to the webview to update the search input
     this._view.webview.postMessage({
       type: 'setSearchText',
-      text: text
+      text,
     });
 
     // Directly trigger search using the search handlers with default options
     const defaultOptions = {
       caseSensitive: false,
       include: '',
-      exclude: ''
+      exclude: '',
     };
 
     // Use the search handlers to perform the search immediately
-    this._searchHandlers.handleSearch(this._view.webview, text, defaultOptions);
+    this._searchHandlers.handleSearch(this._msgPipeline!, text, defaultOptions);
   }
 
   /**
@@ -159,7 +160,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
       return;
     }
     // Cancel the search using the search handlers
-    this._searchHandlers.cancelSearch(this._view.webview);
+    this._searchHandlers.cancelSearch(this._msgPipeline!);
   }
 
   /**
@@ -174,7 +175,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
     }
 
     // Focus the search input in the webview
-    this._searchHandlers.handleFocusSearchInput(this._view.webview);
+    this._searchHandlers.handleFocusSearchInput(this._msgPipeline!);
   }
 
   public async updateStatusbar() {
@@ -192,12 +193,11 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
           const progress = this._haystackProvider.getHaystack().getDownloadProgress();
           if (progress.totalSize > 0) {
             this._statusBarItem.text = `$(sync~spin) Haystack: (Downloading) ${progress.percent}%`;
-            this._statusBarItem.tooltip =
-              `Haystack is downloading:\n• total: ${Math.floor(progress.totalSize / 1024 / 1024 * 100) / 100.0} MB"+
-                                      "\n• downloaded: ${Math.floor(progress.downloadedSize / 1024 / 1024 * 100) / 100.0} MB`;
+            this._statusBarItem.tooltip = `Haystack is downloading:\n• total: ${Math.floor((progress.totalSize / 1024 / 1024) * 100) / 100.0} MB"+
+                                      "\n• downloaded: ${Math.floor((progress.downloadedSize / 1024 / 1024) * 100) / 100.0} MB`;
           } else {
-            this._statusBarItem.text = `$(sync~spin) Haystack: (Downloading) ${Math.floor(progress.downloadedSize / 1024 / 1024 * 100) / 100.0} MB`;
-            this._statusBarItem.tooltip =  `Haystack is downloading:\n• downloaded: ${Math.floor(progress.downloadedSize / 1024 / 1024 * 100) / 100.0} MB`;
+            this._statusBarItem.text = `$(sync~spin) Haystack: (Downloading) ${Math.floor((progress.downloadedSize / 1024 / 1024) * 100) / 100.0} MB`;
+            this._statusBarItem.tooltip = `Haystack is downloading:\n• downloaded: ${Math.floor((progress.downloadedSize / 1024 / 1024) * 100) / 100.0} MB`;
           }
         } else {
           this._statusBarItem.text = `$(sync~spin) Haystack: (Initializing)`;
@@ -206,7 +206,10 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
         this._statusBarItem.show();
         return;
       } else if (status === 'starting') {
-        const retry = this._haystackProvider.getHaystack().getRetryCount() > 0 ? ` Retry: ${this._haystackProvider.getHaystack().getRetryCount()}` : '';
+        const retry =
+          this._haystackProvider.getHaystack().getRetryCount() > 0
+            ? ` Retry: ${this._haystackProvider.getHaystack().getRetryCount()}`
+            : '';
         this._statusBarItem.text = `$(sync~spin) Haystack: (Starting${retry})`;
         this._statusBarItem.tooltip = `Haystack server is starting, `;
         this._statusBarItem.show();
@@ -250,7 +253,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
           this._statusBarItem.tooltip = `Haystack search is ready\n• Total indexed files: ${totalFiles}\n• Status: Ready for search`;
           this._statusBarItem.show();
         }
-    }
+      }
     } catch (error) {
       console.error(`Failed to update workspace status: ${error}`);
     }

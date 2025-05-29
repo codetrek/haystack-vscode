@@ -5,7 +5,7 @@
     "outDir": "dist",
     "lib": ["ES2020"],
     "sourceMap": true,
-    "rootDir": "src",
+    "rootDir": "./src",
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -14,14 +14,12 @@
     "resolveJsonModule": true,
     "isolatedModules": true,
     "noEmit": false,
-    "declaration": false
+    "declaration": false,
+    "paths": {
+      "@/*": ["./src/*"]
+    }
   },
-  "include": [
-    "src/**/*.ts"
-  ],
-  "exclude": [
-    "node_modules",
-    "**/*.spec.ts",
-    ".vscode-test"
-  ]
+  "references": [{ "path": "./src/webview" }],
+  "include": ["src/**/*.ts"],
+  "exclude": ["node_modules", "**/*.spec.ts", ".vscode-test"]
 }

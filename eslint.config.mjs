@@ -8,8 +8,9 @@
  * This configuration is optimized for the Haystack VS Code extension project.
  */
 
-import eslint from '@eslint/js'
-import tseslint from 'typescript-eslint'
+import eslint from '@eslint/js';
+import tseslint from 'typescript-eslint';
+import prettierConfig from 'eslint-config-prettier';
 
 export default tseslint.config(
   // Use ESLint recommended base rules
@@ -80,7 +81,7 @@ export default tseslint.config(
     // TypeScript parser options
     languageOptions: {
       parserOptions: {
-        project: './tsconfig.json',
+        project: './tsconfig.eslint.json',
       },
     },
 
@@ -151,7 +152,8 @@ export default tseslint.config(
         },
       ],
       '@typescript-eslint/explicit-member-accessibility': ['error', { accessibility: 'off' }],
-      '@typescript-eslint/no-empty-interface': 'error',
+      '@typescript-eslint/no-empty-interface': 'off',
+      '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-inferrable-types': 'error',
 
       // Best practices
@@ -175,4 +177,5 @@ export default tseslint.config(
       semi: ['error', 'never'],
     },
   },
-)
+  prettierConfig,
+);

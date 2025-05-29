@@ -1,31 +1,36 @@
 import vscode from 'vscode';
-import { readFileSync } from "fs";
+import { readFileSync } from 'fs';
 import path from 'path';
 
-const localServer = "http://localhost:9000";
+const localServer = 'http://localhost:9000';
 
-export function getSearchTemplate(context: vscode.ExtensionContext, webview: vscode.Webview, isHaystackSupported: boolean) {
+export function getSearchTemplate(
+  context: vscode.ExtensionContext,
+  webview: vscode.Webview,
+  isHaystackSupported: boolean,
+) {
   const nonce = getNonce();
 
-  const localJsFile = webview.asWebviewUri(
-    vscode.Uri.parse(`${localServer}/webview.js`)
-  );
+  const localJsFile = webview
+    .asWebviewUri(vscode.Uri.parse(`${localServer}/webview.js`))
+    .toString();
 
-  let scriptUrl = [];
+  const scriptUrl: string[] = [];
 
   const isProd = context.extensionMode === vscode.ExtensionMode.Production;
   if (isProd) {
     // Get the manifest file from the dist folder
     const manifest = readFileSync(
-      path.join(context.extensionUri.fsPath, "dist", "webview", "manifest.json"),
-      "utf-8"
+      path.join(context.extensionUri.fsPath, 'dist', 'webview', 'manifest.json'),
+      'utf-8',
     );
     const manifestJson = JSON.parse(manifest);
     for (const [key, value] of Object.entries<string>(manifestJson)) {
-      if (key.endsWith(".js")) {
-        scriptUrl.push(webview.asWebviewUri(
-          vscode.Uri.joinPath(context.extensionUri, "dist", "webview", value)
-        ).toString()
+      if (key.endsWith('.js')) {
+        scriptUrl.push(
+          webview
+            .asWebviewUri(vscode.Uri.joinPath(context.extensionUri, 'dist', 'webview', value))
+            .toString(),
         );
       }
     }
@@ -34,9 +39,7 @@ export function getSearchTemplate(context: vscode.ExtensionContext, webview: vsc
   }
 
   // Set CSP (Content Security Policy)
-  const devExtraCsp = isProd
-    ? ''
-    : `http://localhost:9000`;
+  const devExtraCsp = isProd ? '' : localServer;
   const csp = `
         default-src 'none';
         style-src ${webview.cspSource} 'unsafe-inline';
@@ -78,7 +81,7 @@ export function getSearchTemplate(context: vscode.ExtensionContext, webview: vsc
         </div>
         <div class="search-results" id="searchResults"></div>
       </div>
-      ${scriptUrl.map((url) => `<script src="${url}" nonce="${nonce}" crossorigin="anonymous"></script>`).join("\n")}
+      ${scriptUrl.map((url) => `<script src="${url}" nonce="${nonce}" crossorigin="anonymous"></script>`).join('\n')}
     </body>
     </html>
   `;
