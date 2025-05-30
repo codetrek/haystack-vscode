@@ -112,5 +112,34 @@ export interface CreateWorkspaceRequest {
 export interface UpdateWorkspaceRequest {
   workspace: string;
   use_global_filters: boolean;
+  symbol_parse: boolean;
   filters?: Filters;
+}
+
+export interface SymbolsFileMatch {
+  path: string;
+  line: number;
+}
+
+export interface SymbolContent {
+  name: string;
+  files: SymbolsFileMatch[];
+}
+
+export interface SymbolsContentResults {
+  query: string;
+  symbols: SymbolContent[];
+}
+
+export interface SearchSymbolsResponse {
+  code: number;
+  message: string;
+  data?: SymbolsContentResults;
+}
+
+export interface SearchSymbolsRequest {
+  workspace: string;
+  query: string;
+  fuzzy: boolean;
+  limit?: SearchLimit;
 }

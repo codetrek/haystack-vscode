@@ -17,7 +17,13 @@ export class SearchResult {
   score: number;
   matchRanges: vscode.Range[];
 
-  constructor(filePath: string, lineContent: string, lineNumber: number, matchRanges: vscode.Range[] = [], score: number = 0) {
+  constructor(
+    filePath: string,
+    lineContent: string,
+    lineNumber: number,
+    matchRanges: vscode.Range[] = [],
+    score = 0,
+  ) {
     this.filePath = filePath;
     this.lineContent = lineContent;
     this.lineNumber = lineNumber;
@@ -25,7 +31,7 @@ export class SearchResult {
     this.matchRanges = matchRanges;
     this.lineRange = new vscode.Range(
       new vscode.Position(lineNumber, 0),
-      new vscode.Position(lineNumber, lineContent.length)
+      new vscode.Position(lineNumber, lineContent.length),
     );
   }
 
@@ -39,8 +45,8 @@ export class SearchResult {
       range: this.lineRange,
       preview: {
         text: this.lineContent,
-        matches: this.matchRanges
-      }
+        matches: this.matchRanges,
+      },
     };
   }
 }

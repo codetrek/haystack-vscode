@@ -92,6 +92,11 @@
           "default": true,
           "description": "Use global filters for Haystack search"
         },
+        "haystack.search.symbolParse": {
+          "type": "boolean",
+          "default": false,
+          "description": "Parse functions with ctags for Haystack search"
+        },
         "haystack.search.exclude.useGitIgnore": {
           "type": "boolean",
           "default": false,
@@ -153,6 +158,10 @@
         "command": "haystack.cancelSearch",
         "title": "Cancel Searching (ESC)",
         "icon": "$(stop-circle)"
+      },
+      {
+        "command": "haystack.searchFunctionSymbols",
+        "title": "Search Function Symbols"
       }
     ],
     "keybindings": [
@@ -181,6 +190,12 @@
           "command": "haystack.openSettings",
           "when": "view == haystackSearch",
           "group": "navigation@3"
+        },
+        {
+          "command": "haystack.searchFunctionSymbols",
+          "when": "view == haystackSearch",
+          "group": "navigation@4",
+          "icon": "$(symbol-function)"
         }
       ]
     }

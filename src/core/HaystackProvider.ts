@@ -1,15 +1,16 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import {
+  CreateWorkspaceRequest,
   SearchContentRequest,
   SearchContentResult,
-  CreateWorkspaceRequest,
+  SearchSymbolsResponse,
   UpdateWorkspaceRequest,
 } from '../types/search';
 import { Haystack } from './Haystack';
 
 // Haystack API URLs
-const HAYSTACK_API_VERSION = `/api/v1`;
+const HAYSTACK_API_VERSION = '/api/v1';
 const WORKSPACE_CREATE_URL = `${HAYSTACK_API_VERSION}/workspace/create`;
 const WORKSPACE_UPDATE_URL = `${HAYSTACK_API_VERSION}/workspace/update`;
 const WORKSPACE_GET_URL = `${HAYSTACK_API_VERSION}/workspace/get`;
@@ -17,6 +18,7 @@ const WORKSPACE_SYNC_URL = `${HAYSTACK_API_VERSION}/workspace/sync`;
 const DOCUMENT_UPDATE_URL = `${HAYSTACK_API_VERSION}/document/update`;
 const DOCUMENT_DELETE_URL = `${HAYSTACK_API_VERSION}/document/delete`;
 const SEARCH_CONTENT_URL = `${HAYSTACK_API_VERSION}/search/content`;
+const SEARCH_SYMBOLS_URL = `${HAYSTACK_API_VERSION}/search/symbols`;
 
 export class HaystackProvider {
   private workspaceRoots: string[] = [];
@@ -30,22 +32,22 @@ export class HaystackProvider {
     this.initWorkspaceRoots(workspaceFolders);
     this.periodicTaskInterval = null;
     this.haystack = haystack;
-    
+
     // Start periodic workspace creation task
     this.startPeriodicTask();
 
     // Listen for workspace folder changes
-    vscode.workspace.onDidChangeWorkspaceFolders(event => {
+    vscode.workspace.onDidChangeWorkspaceFolders((event) => {
       this.handleWorkspaceFoldersChanged(event);
     });
 
     // Listen for configuration changes
-    vscode.workspace.onDidChangeConfiguration(event => {
+    vscode.workspace.onDidChangeConfiguration((event) => {
       this.handleConfigurationChanged(event);
     });
 
     // Listen for file save events
-    vscode.workspace.onDidSaveTextDocument(async (document) => {
+    vscode.workspace.onDidSaveTextDocument((document) => {
       if (document.uri.scheme === 'file') {
         try {
           // Skip .code-workspace files explicitly
@@ -108,17 +110,17 @@ export class HaystackProvider {
               console.warn(`No workspace root found for deleted file: ${uri.fsPath}`);
               continue;
             }
-            
+
             // Check if the file is actually inside the workspace
             if (!uri.fsPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
               // File is outside the workspace (like .code-workspace files)
               console.log(`Skipping deleted file outside workspace: ${uri.fsPath}`);
               continue;
             }
-            
+
             // Get the relative path from the workspace root
             const relativePath = path.relative(workspaceRoot, uri.fsPath);
-            
+
             console.log(`Deleting file: ${relativePath} (workspace: ${workspaceRoot})`);
             await this.deleteDocument(relativePath, workspaceRoot);
           } catch (error) {
@@ -144,17 +146,17 @@ export class HaystackProvider {
               console.log(`Skipping created file outside workspace: ${uri.fsPath}`);
               continue;
             }
-            
+
             // Check if the file actually exists before trying to update
             try {
               await vscode.workspace.fs.stat(uri);
-            } catch (statError) {
+            } catch {
               console.warn(`File not found or cannot be accessed: ${uri.fsPath}. Skipping update.`);
               continue;
             }
-            
+
             const relativePath = path.relative(workspaceRoot, uri.fsPath);
-            
+
             console.log(`Updating created file: ${relativePath} (workspace: ${workspaceRoot})`);
             await this.updateDocument(relativePath, workspaceRoot);
           } catch (error) {
@@ -169,11 +171,13 @@ export class HaystackProvider {
     return this.haystack;
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private async post(uri: string, data: any) {
     if (!this.haystack || this.haystack.getStatus() !== 'running') {
       throw new Error('Haystack is not running');
     }
 
+    // eslint-disable-next-line no-return-await
     return await this.haystack.post(uri, data);
   }
   private startPeriodicTask() {
@@ -191,7 +195,9 @@ export class HaystackProvider {
           try {
             await this.createWorkspace(workspaceRoot);
           } catch (error) {
-            console.error(`Failed to create workspace for ${workspaceRoot} in periodic task: ${error}`);
+            console.error(
+              `Failed to create workspace for ${workspaceRoot} in periodic task: ${error}`,
+            );
           }
         }
       } catch (error) {
@@ -202,7 +208,7 @@ export class HaystackProvider {
 
   async createWorkspace(workspaceRoot?: string): Promise<void> {
     const rootPath = workspaceRoot || null;
-    
+
     if (!rootPath) {
       throw new Error('No workspace folder is opened');
     }
@@ -222,10 +228,10 @@ export class HaystackProvider {
         filters: {
           exclude: {
             use_git_ignore: useGitIgnore,
-            customized: customExclude
+            customized: customExclude,
           },
-          include: includePatterns
-        }
+          include: includePatterns,
+        },
       };
 
       const response = await this.post(WORKSPACE_CREATE_URL, payload);
@@ -246,10 +252,10 @@ export class HaystackProvider {
     try {
       // Convert Windows backslashes to forward slashes for consistency with Haystack API
       const normalizedFilePath = filePath.replace(/\\/g, '/');
-      
+
       const response = await this.post(DOCUMENT_UPDATE_URL, {
         workspace: workspaceRoot,
-        path: normalizedFilePath
+        path: normalizedFilePath,
       });
 
       if (response.data.code !== 0) {
@@ -268,10 +274,10 @@ export class HaystackProvider {
     try {
       // Convert Windows backslashes to forward slashes for consistency with Haystack API
       const normalizedFilePath = filePath.replace(/\\/g, '/');
-      
+
       const response = await this.post(DOCUMENT_DELETE_URL, {
         workspace: workspaceRoot,
-        path: normalizedFilePath
+        path: normalizedFilePath,
       });
 
       if (response.data.code !== 0) {
@@ -281,15 +287,20 @@ export class HaystackProvider {
       throw new Error(`Failed to delete document: ${error}`);
     }
   }
-  
-  async searchStream(query: string, options: {
-    workspaceRoot?: string; // Added workspace root parameter
-    caseSensitive?: boolean;
-    include?: string;
-    exclude?: string;
-    maxResults?: number;
-    maxResultsPerFile?: number;
-  }, onResult: (result: SearchContentResult, isDone: boolean) => void, abortSignal?: AbortSignal): Promise<void> {
+
+  async searchStream(
+    query: string,
+    options: {
+      workspaceRoot?: string; // Added workspace root parameter
+      caseSensitive?: boolean;
+      include?: string;
+      exclude?: string;
+      maxResults?: number;
+      maxResultsPerFile?: number;
+    },
+    onResult: (result: SearchContentResult, isDone: boolean) => void,
+    abortSignal?: AbortSignal,
+  ): Promise<void> {
     if (!this.haystack || this.haystack.getStatus() !== 'running') {
       throw new Error('Haystack is not running');
     }
@@ -302,24 +313,24 @@ export class HaystackProvider {
 
     const searchRequest: SearchContentRequest = {
       workspace: workspaceRoot,
-      query: query,
+      query,
       editor: {
         open_files: this.getAllOpenTextDocumentPaths(workspaceRoot),
         active_file: vscode.window.activeTextEditor?.document?.uri
-          ? workspaceRoot 
+          ? workspaceRoot
             ? path.relative(workspaceRoot, vscode.window.activeTextEditor.document.uri.fsPath)
             : vscode.workspace.asRelativePath(vscode.window.activeTextEditor.document.uri)
-          : ''
+          : '',
       },
       case_sensitive: options.caseSensitive,
       filters: {
         include: options.include,
-        exclude: options.exclude
+        exclude: options.exclude,
       },
       limit: {
         max_results: options.maxResults,
-        max_results_per_file: options.maxResultsPerFile
-      }
+        max_results_per_file: options.maxResultsPerFile,
+      },
     };
 
     try {
@@ -328,11 +339,14 @@ export class HaystackProvider {
 
       if (!stream) {
         // If stream isn't available, call onResult with empty result and isDone=true
-        onResult({
-          file: '',
-          lines: [],
-          truncate: false
-        }, true);
+        onResult(
+          {
+            file: '',
+            lines: [],
+            truncate: false,
+          },
+          true,
+        );
         return;
       }
 
@@ -348,20 +362,27 @@ export class HaystackProvider {
 
       // Add abort handler
       if (abortSignal) {
-        abortSignal.addEventListener('abort', () => {
-          console.log('Search aborted by user');
-          done = true;
-          // Release the reader to stop receiving chunks
-          reader.cancel('Search cancelled by user').catch(error => {
-            console.error('Error cancelling reader:', error);
-          });
-          // Notify caller of the aborted search
-          onResult({
-            file: '',
-            lines: [],
-            truncate: false
-          }, true);
-        }, { once: true });
+        abortSignal.addEventListener(
+          'abort',
+          () => {
+            console.log('Search aborted by user');
+            done = true;
+            // Release the reader to stop receiving chunks
+            reader.cancel('Search cancelled by user').catch((error) => {
+              console.error('Error cancelling reader:', error);
+            });
+            // Notify caller of the aborted search
+            onResult(
+              {
+                file: '',
+                lines: [],
+                truncate: false,
+              },
+              true,
+            );
+          },
+          { once: true },
+        );
       }
 
       while (!done) {
@@ -378,7 +399,7 @@ export class HaystackProvider {
           // Process any remaining data in the buffer
           if (buffer.trim()) {
             try {
-              this.processEventData(buffer, onResult, true);
+              this.processEventData(buffer, onResult);
             } catch (e) {
               console.error('Error processing final SSE chunk:', e);
             }
@@ -398,7 +419,7 @@ export class HaystackProvider {
           buffer = buffer.substring(eventEndIndex + 2);
 
           // Process each event
-          this.processEventData(eventsData, onResult, false);
+          this.processEventData(eventsData, onResult);
         }
       }
     } catch (error) {
@@ -410,17 +431,23 @@ export class HaystackProvider {
 
       console.error(`Search streaming error: ${error}`);
       // Notify caller of the error
-      onResult({
-        file: '',
-        lines: [],
-        truncate: false
-      }, true);
+      onResult(
+        {
+          file: '',
+          lines: [],
+          truncate: false,
+        },
+        true,
+      );
     }
   }
 
-  private processEventData(eventsData: string, onResult: (result: SearchContentResult, isDone: boolean) => void, isFinal: boolean): void {
+  private processEventData(
+    eventsData: string,
+    onResult: (result: SearchContentResult, isDone: boolean) => void,
+  ): void {
     // Split the data into individual events
-    const events = eventsData.split('\n\n').filter(event => event.trim());
+    const events = eventsData.split('\n\n').filter((event) => event.trim());
 
     for (let i = 0; i < events.length; i++) {
       const event = events[i];
@@ -450,8 +477,8 @@ export class HaystackProvider {
         try {
           // Process completion event
           onResult(JSON.parse(eventData), true);
-        }catch (e) {
-          onResult({file: '', lines: [], truncate: false}, true);
+        } catch {
+          onResult({ file: '', lines: [], truncate: false }, true);
         }
       }
     }
@@ -492,7 +519,9 @@ export class HaystackProvider {
   /**
    * Get workspace status for a specific workspace or all workspaces
    */
-  async getWorkspaceStatus(workspaceRoot?: string): Promise<{ indexing: boolean; totalFiles: number; indexedFiles: number; error?: string }> {
+  async getWorkspaceStatus(
+    workspaceRoot?: string,
+  ): Promise<{ indexing: boolean; totalFiles: number; indexedFiles: number; error?: string }> {
     // If a specific workspace is requested, get status for that one
     // Otherwise, use default workspace (for backward compatibility)
     const targetWorkspaceRoot = workspaceRoot || this.getWorkspaceRoot();
@@ -502,27 +531,32 @@ export class HaystackProvider {
         indexing: false,
         totalFiles: 0,
         indexedFiles: 0,
-        error: 'No workspace folder is opened'
+        error: 'No workspace folder is opened',
       };
     }
 
     try {
       const response = await this.post(WORKSPACE_GET_URL, {
-        workspace: targetWorkspaceRoot
+        workspace: targetWorkspaceRoot,
       });
 
       if (response.data.code === 1) {
         // Workspace not found, try to create it
-        console.log(`Haystack: Workspace '${targetWorkspaceRoot}' not found. Attempting to create...`);
+        console.log(
+          `Haystack: Workspace '${targetWorkspaceRoot}' not found. Attempting to create...`,
+        );
         try {
           await this.createWorkspace(targetWorkspaceRoot);
-          console.log(`Haystack: Workspace '${targetWorkspaceRoot}' created successfully. Initial sync triggered.`);
+          console.log(
+            `Haystack: Workspace '${targetWorkspaceRoot}' created successfully. Initial sync triggered.`,
+          );
           // Return status indicating indexing has started
           return {
             indexing: true,
             totalFiles: 0, // Total files unknown until first sync completes
-            indexedFiles: 0
+            indexedFiles: 0,
           };
+          // eslint-disable-next-line @typescript-eslint/no-explicit-any
         } catch (creationError: any) {
           const errorMessage = creationError.message || String(creationError);
           if (errorMessage.includes('Workspace already exists')) {
@@ -532,15 +566,17 @@ export class HaystackProvider {
               indexing: false,
               totalFiles: 0,
               indexedFiles: 0,
-              error: 'Workspace status update pending after concurrent creation'
+              error: 'Workspace status update pending after concurrent creation',
             };
           } else {
-            console.error(`Haystack: Failed to automatically create workspace '${targetWorkspaceRoot}': ${errorMessage}`);
+            console.error(
+              `Haystack: Failed to automatically create workspace '${targetWorkspaceRoot}': ${errorMessage}`,
+            );
             return {
               indexing: false,
               totalFiles: 0,
               indexedFiles: 0,
-              error: `Failed to create workspace: ${errorMessage}`
+              error: `Failed to create workspace: ${errorMessage}`,
             };
           }
         }
@@ -550,35 +586,40 @@ export class HaystackProvider {
         return {
           indexing: statusData.indexing || false,
           totalFiles: statusData.total_files || 0,
-          indexedFiles: statusData.indexed_files || 0
+          indexedFiles: statusData.indexed_files || 0,
         };
       } else {
         // Handle other non-zero error codes
-        console.error(`Haystack: Error getting workspace status for '${targetWorkspaceRoot}': ${response.data.message || 'Unknown error'}`);
+        console.error(
+          `Haystack: Error getting workspace status for '${targetWorkspaceRoot}': ${response.data.message || 'Unknown error'}`,
+        );
         return {
           indexing: false,
           totalFiles: 0,
           indexedFiles: 0,
-          error: `Error fetching workspace status: ${response.data.message || 'Unknown error'}`
+          error: `Error fetching workspace status: ${response.data.message || 'Unknown error'}`,
         };
       }
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
     } catch (error: any) {
       const errorMessage = error.response?.data?.message || error.message || String(error);
       if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
-        console.error(`Haystack: Failed to connect to Haystack server. Ensure it's running.`);
+        console.error("Haystack: Failed to connect to Haystack server. Ensure it's running.");
         return {
           indexing: false,
           totalFiles: 0,
           indexedFiles: 0,
-          error: 'Haystack server is not running or unreachable.'
+          error: 'Haystack server is not running or unreachable.',
         };
       }
-      console.error(`Haystack: Unexpected error getting workspace status for '${targetWorkspaceRoot}': ${errorMessage}`);
+      console.error(
+        `Haystack: Unexpected error getting workspace status for '${targetWorkspaceRoot}': ${errorMessage}`,
+      );
       return {
         indexing: false,
         totalFiles: 0,
         indexedFiles: 0,
-        error: `Unexpected error fetching status: ${errorMessage}`
+        error: `Unexpected error fetching status: ${errorMessage}`,
       };
     }
   }
@@ -603,7 +644,7 @@ export class HaystackProvider {
           console.error(`Failed to sync workspace ${root}: ${error}`);
         }
       }
-      console.log(`Haystack: Completed syncing all workspaces`);
+      console.log('Haystack: Completed syncing all workspaces');
     }
   }
 
@@ -617,6 +658,7 @@ export class HaystackProvider {
       const config = vscode.workspace.getConfiguration('haystack.search');
       const useGlobalFilters = config.get<boolean>('useGlobalFilters', true);
       const useGitIgnore = config.get<boolean>('exclude.useGitIgnore', false);
+      const symbolParse = config.get<boolean>('symbolParse', false);
       const customExclude = config.get<string[]>('exclude.custom', []);
       const includePatterns = config.get<string[]>('include', ['**/*']);
 
@@ -624,13 +666,14 @@ export class HaystackProvider {
       const updatePayload: UpdateWorkspaceRequest = {
         workspace: workspaceRoot,
         use_global_filters: useGlobalFilters,
+        symbol_parse: symbolParse,
         filters: {
           exclude: {
             use_git_ignore: useGitIgnore,
-            customized: customExclude
+            customized: customExclude,
           },
-          include: includePatterns
-        }
+          include: includePatterns,
+        },
       };
 
       // First update the workspace with the configuration
@@ -648,7 +691,7 @@ export class HaystackProvider {
       // Then sync the workspace (only send workspace path)
       console.log(`Haystack: Starting indexing for ${workspaceRoot}`);
       const syncResponse = await this.post(WORKSPACE_SYNC_URL, {
-        workspace: workspaceRoot
+        workspace: workspaceRoot,
       });
 
       if (syncResponse.data.code !== 0) {
@@ -667,13 +710,15 @@ export class HaystackProvider {
     }
 
     try {
-      console.log(`Haystack: Starting server...`);
+      console.log('Haystack: Starting server...');
       // Start the Haystack server
       await this.haystack.startServer();
-      console.log(`Haystack: Server started successfully`);
+      console.log('Haystack: Server started successfully');
 
       // Create workspaces for all workspace roots
-      console.log(`Haystack: Creating workspaces for ${this.workspaceRoots.length} workspace roots`);
+      console.log(
+        `Haystack: Creating workspaces for ${this.workspaceRoots.length} workspace roots`,
+      );
       for (const root of this.workspaceRoots) {
         try {
           console.log(`Haystack: Creating workspace for ${root}`);
@@ -684,7 +729,7 @@ export class HaystackProvider {
         }
       }
     } catch (error) {
-            throw new Error(`Failed to start Haystack server: ${error}`);
+      throw new Error(`Failed to start Haystack server: ${error}`);
     }
   }
 
@@ -718,8 +763,8 @@ export class HaystackProvider {
 
     // Add paths from all text documents
     allOpenDocs
-      .filter(doc => doc.uri && doc.uri.scheme === 'file')
-      .forEach(doc => {
+      .filter((doc) => doc.uri && doc.uri.scheme === 'file')
+      .forEach((doc) => {
         const relativePath = workspaceRoot
           ? path.relative(workspaceRoot, doc.uri.fsPath)
           : vscode.workspace.asRelativePath(doc.uri, false); // Use false to avoid prepending workspace folder name
@@ -730,8 +775,10 @@ export class HaystackProvider {
 
     // Add paths from visible editors (some tabs might not be in text documents)
     visibleEditors
-      .filter(editor => editor.document && editor.document.uri && editor.document.uri.scheme === 'file')
-      .forEach(editor => {
+      .filter(
+        (editor) => editor.document && editor.document.uri && editor.document.uri.scheme === 'file',
+      )
+      .forEach((editor) => {
         const relativePath = workspaceRoot
           ? path.relative(workspaceRoot, editor.document.uri.fsPath)
           : vscode.workspace.asRelativePath(editor.document.uri, false); // Use false to avoid prepending workspace folder name
@@ -748,33 +795,39 @@ export class HaystackProvider {
   /**
    * Initialize workspace roots from workspace folders
    */
-  private initWorkspaceRoots(workspaceFolders: readonly vscode.WorkspaceFolder[] | undefined): void {
+  private initWorkspaceRoots(
+    workspaceFolders: readonly vscode.WorkspaceFolder[] | undefined,
+  ): void {
     this.workspaceRoots = [];
-    
+
     if (workspaceFolders && workspaceFolders.length > 0) {
       // Add all workspace folder paths
       console.log(`Haystack: Initializing with ${workspaceFolders.length} workspace folders`);
       for (const folder of workspaceFolders) {
         this.workspaceRoots.push(folder.uri.fsPath);
         console.log(`Haystack: Added workspace root: ${folder.uri.fsPath} (${folder.name})`);
-      }      
+      }
     } else {
-      console.log(`Haystack: No workspace folders found, workspaceRoot is empty`);
+      console.log('Haystack: No workspace folders found, workspaceRoot is empty');
     }
   }
   /**
    * Handle workspace folder changes
    */
-  private async handleWorkspaceFoldersChanged(event: vscode.WorkspaceFoldersChangeEvent): Promise<void> {
-    console.log(`Haystack: Workspace folders changed. Added: ${event.added.length}, Removed: ${event.removed.length}`);
-    
+  private async handleWorkspaceFoldersChanged(
+    event: vscode.WorkspaceFoldersChangeEvent,
+  ): Promise<void> {
+    console.log(
+      `Haystack: Workspace folders changed. Added: ${event.added.length}, Removed: ${event.removed.length}`,
+    );
+
     // Remove deleted folders
     for (const folder of event.removed) {
       const index = this.workspaceRoots.indexOf(folder.uri.fsPath);
       if (index !== -1) {
         this.workspaceRoots.splice(index, 1);
         console.log(`Haystack: Removed workspace root: ${folder.uri.fsPath} (${folder.name})`);
-        
+
         // Clean up any pending timeouts for this workspace
         if (this.updateTimeouts.has(folder.uri.fsPath)) {
           console.log(`Haystack: Cleaning up timeouts for removed workspace: ${folder.uri.fsPath}`);
@@ -782,13 +835,13 @@ export class HaystackProvider {
         }
       }
     }
-    
+
     // Add new folders and create workspaces for them
     for (const folder of event.added) {
       const folderPath = folder.uri.fsPath;
       this.workspaceRoots.push(folderPath);
       console.log(`Haystack: Added new workspace root: ${folderPath} (${folder.name})`);
-      
+
       // Create new workspace for the added folder
       try {
         console.log(`Haystack: Creating workspace for newly added folder: ${folderPath}`);
@@ -809,18 +862,18 @@ export class HaystackProvider {
     // Check if 'haystack.search' settings are affected for any of the current workspace roots
     // or globally if no workspace is open.
     for (const root of this.workspaceRoots) {
-        // Pass the workspace folder URI as the scope to affectsConfiguration
-        const workspaceFolderUri = vscode.Uri.file(root);
-        if (event.affectsConfiguration('haystack.search', workspaceFolderUri)) {
-            affected = true;
-            break;
-        }
+      // Pass the workspace folder URI as the scope to affectsConfiguration
+      const workspaceFolderUri = vscode.Uri.file(root);
+      if (event.affectsConfiguration('haystack.search', workspaceFolderUri)) {
+        affected = true;
+        break;
+      }
     }
     if (!affected && this.workspaceRoots.length === 0) {
-        // Check for global configuration change if no workspace is open
-        if (event.affectsConfiguration('haystack.search')) {
-            affected = true;
-        }
+      // Check for global configuration change if no workspace is open
+      if (event.affectsConfiguration('haystack.search')) {
+        affected = true;
+      }
     }
 
     if (affected) {
@@ -829,6 +882,51 @@ export class HaystackProvider {
       // It's important to sync all, as global filters might affect all workspaces
       // if useGlobalFilters is true, or if a global setting itself changed.
       await this.syncWorkspace();
+    }
+  }
+
+  /**
+   * Search for symbols in the workspace
+   */
+  public async searchSymbols(
+    workspaceRoot: string,
+    query: string,
+    fuzzy = true,
+  ): Promise<SearchSymbolsResponse> {
+    try {
+      // Ensure the Haystack server is running
+      if (!this.haystack || this.haystack.getStatus() !== 'running') {
+        return {
+          code: 503,
+          message: 'Haystack server is not running',
+        };
+      }
+      const requestData = {
+        workspace: workspaceRoot,
+        query,
+        fuzzy,
+      };
+
+      const response = await this.post(SEARCH_SYMBOLS_URL, requestData);
+      // Process the response
+      if (response.data) {
+        return {
+          code: response.data.code || 200,
+          message: response.data.message || 'Success',
+          data: response.data.data,
+        };
+      }
+      return {
+        code: response.status || 200,
+        message: 'Success',
+        data: response.data,
+      };
+    } catch (error) {
+      console.error('Failed to search symbols:', error);
+      return {
+        code: 500,
+        message: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
     }
   }
 
