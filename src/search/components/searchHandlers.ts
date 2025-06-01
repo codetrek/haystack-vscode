@@ -25,7 +25,7 @@ export class SearchHandlers {
     let globallyTruncated = false;
 
     try {
-      this.cancelSearch(msgPipeline);
+      await this.cancelSearch(msgPipeline);
 
       this.abortController = new AbortController();
       currentAbortController = this.abortController;
@@ -50,7 +50,7 @@ export class SearchHandlers {
       workspacesToSearch = [...new Set(workspacesToSearch.filter((p) => p))];
 
       // Send initial message to indicate search has started
-      msgPipeline.post('searchStarted', {
+      await msgPipeline.post('searchStarted', {
         query,
         workspaces: workspacesToSearch.map((ws) => {
           const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(ws));
@@ -69,7 +69,7 @@ export class SearchHandlers {
 
       if (totalWorkspacesToSearch === 0) {
         if (!webviewPostMessageSentForCompletion) {
-          msgPipeline.post('searchResultStream', {
+          await msgPipeline.post('searchResultStream', {
             truncated: false, // No search, so not truncated
             isDone: true,
           });
@@ -78,7 +78,7 @@ export class SearchHandlers {
         if (this.abortController === currentAbortController) {
           this.abortController = null;
         }
-        vscode.commands.executeCommand('setContext', 'haystackSearching', false);
+        await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
         return;
       }
 
@@ -90,7 +90,7 @@ export class SearchHandlers {
           completedSearchCount++;
           if (completedSearchCount >= totalWorkspacesToSearch) {
             if (!webviewPostMessageSentForCompletion) {
-              msgPipeline.post('searchResultStream', {
+              await msgPipeline.post('searchResultStream', {
                 truncated: globallyTruncated,
                 isDone: true,
               });
@@ -98,7 +98,7 @@ export class SearchHandlers {
               if (this.abortController === currentAbortController) {
                 this.abortController = null;
               }
-              vscode.commands.executeCommand('setContext', 'haystackSearching', false);
+              await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
             }
           }
           continue;
@@ -117,7 +117,7 @@ export class SearchHandlers {
               maxResults,
               maxResultsPerFile,
             },
-            (result, isDone) => {
+            async (result, isDone) => {
               // if aborted, only process 'isDone' to complete the count and send final message
               if (currentAbortController!.signal.aborted && !isDone) {
                 return;
@@ -134,7 +134,7 @@ export class SearchHandlers {
                     );
                     const name =
                       workspaceFolder?.name || workspaceRoot.split(/[/\\]/).pop() || workspaceRoot;
-                    msgPipeline.post('searchResultStream', {
+                    await msgPipeline.post('searchResultStream', {
                       workspaceRoot,
                       workspaceName: name,
                       truncated: result.truncate || false || globallyTruncated,
@@ -145,7 +145,7 @@ export class SearchHandlers {
                   if (this.abortController === currentAbortController) {
                     this.abortController = null;
                   }
-                  vscode.commands.executeCommand('setContext', 'haystackSearching', false);
+                  await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
                 }
                 return;
               }
@@ -180,7 +180,7 @@ export class SearchHandlers {
                 );
                 const name =
                   workspaceFolder?.name || workspaceRoot.split(/[/\\]/).pop() || workspaceRoot;
-                msgPipeline.post('searchResultStream', {
+                await msgPipeline.post('searchResultStream', {
                   workspaceRoot,
                   workspaceName: name,
                   result: {
@@ -203,7 +203,7 @@ export class SearchHandlers {
           completedSearchCount++;
           if (completedSearchCount >= totalWorkspacesToSearch) {
             if (!webviewPostMessageSentForCompletion) {
-              msgPipeline.post('searchResultStream', {
+              await msgPipeline.post('searchResultStream', {
                 truncated: globallyTruncated,
                 isDone: true,
               });
@@ -212,14 +212,14 @@ export class SearchHandlers {
             if (this.abortController === currentAbortController) {
               this.abortController = null;
             }
-            vscode.commands.executeCommand('setContext', 'haystackSearching', false);
+            await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
           }
         }
       }
     } catch (error) {
       console.log(`Search error: ${error}`);
       if (!webviewPostMessageSentForCompletion) {
-        msgPipeline.post('searchResultStream', {
+        await msgPipeline.post('searchResultStream', {
           truncated: globallyTruncated,
           isDone: true,
         });
@@ -237,13 +237,13 @@ export class SearchHandlers {
         currentAbortController.abort();
       }
       // Ensure cancelSearch is called to properly clean up the class-level state if it matches current operation
-      this.cancelSearch(msgPipeline);
+      await this.cancelSearch(msgPipeline);
     }
   }
 
-  cancelSearch(msgPipeline: ExtensionMessagePipeline) {
+  async cancelSearch(msgPipeline: ExtensionMessagePipeline) {
     if (this.abortController) {
-      msgPipeline.post('searchCancelled');
+      await msgPipeline.post('searchCancelled');
 
       this.abortController.abort();
       this.abortController = null;
@@ -300,8 +300,8 @@ export class SearchHandlers {
     }
   }
 
-  handleFocusSearchInput(msgPipeline: ExtensionMessagePipeline) {
-    msgPipeline.post('focusSearchInput');
+  async handleFocusSearchInput(msgPipeline: ExtensionMessagePipeline) {
+    await msgPipeline.post('focusSearchInput');
   }
 
   // Update the workspace roots when the DOM is loaded
@@ -310,15 +310,15 @@ export class SearchHandlers {
     // Update the workspaceRoots in case they've changed
   }
 
-  handleVisibilityChange(msgPipeline: ExtensionMessagePipeline, isVisible: boolean) {
+  async handleVisibilityChange(msgPipeline: ExtensionMessagePipeline, isVisible: boolean) {
     console.log(`Search view visibility changed: ${isVisible ? 'visible' : 'hidden'}`);
 
-    msgPipeline.post('visibilityChanged', {
+    await msgPipeline.post('visibilityChanged', {
       isVisible,
     });
 
     if (isVisible) {
-      this.handleFocusSearchInput(msgPipeline);
+      await this.handleFocusSearchInput(msgPipeline);
     }
   }
 }

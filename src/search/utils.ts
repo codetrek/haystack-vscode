@@ -25,7 +25,7 @@ export function formatSearchResults(results: TextSearchResult[]): TextSearchResu
 export function getSearchOptions(): TextSearchOptions {
   return {
     includePattern: { '**/*': true },
-    excludePattern: { '**/node_modules/**': true }
+    excludePattern: { '**/node_modules/**': true },
   };
 }
 
@@ -39,8 +39,5 @@ export function getSearchOptions(): TextSearchOptions {
  */
 export function canonicalizePath(filePath: string): string {
   if (!filePath) return '';
-  return filePath
-    .toLowerCase()
-    .replace(/\\/g, '/')
-    .replace(/\/+$/, '');
+  return filePath.toLowerCase().replace(/\\/g, '/').replace(/\/+$/, '');
 }

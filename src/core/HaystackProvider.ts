@@ -20,6 +20,23 @@ const DOCUMENT_DELETE_URL = `${HAYSTACK_API_VERSION}/document/delete`;
 const SEARCH_CONTENT_URL = `${HAYSTACK_API_VERSION}/search/content`;
 const SEARCH_SYMBOLS_URL = `${HAYSTACK_API_VERSION}/search/symbols`;
 
+interface HaystackResponseData {
+  code: number;
+  message?: string;
+  data?: unknown;
+}
+
+interface HaystackResponse {
+  data: HaystackResponseData;
+  status?: number; // Optional status, as it's used in one place
+}
+
+interface WorkspaceStatusData {
+  indexing: boolean;
+  total_files: number;
+  indexed_files: number;
+}
+
 export class HaystackProvider {
   private workspaceRoots: string[] = [];
   private updateTimeouts: Map<string, Map<string, NodeJS.Timeout>> = new Map(); // Map of workspaceRoot -> (relativePath -> timeout)
@@ -171,15 +188,14 @@ export class HaystackProvider {
     return this.haystack;
   }
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  private async post(uri: string, data: any) {
+  private post(uri: string, data: unknown): Promise<HaystackResponse> {
     if (!this.haystack || this.haystack.getStatus() !== 'running') {
       throw new Error('Haystack is not running');
     }
 
-    // eslint-disable-next-line no-return-await
-    return await this.haystack.post(uri, data);
+    return this.haystack.post(uri, data) as Promise<HaystackResponse>;
   }
+
   private startPeriodicTask() {
     // Clear existing interval if any
     if (this.periodicTaskInterval) {
@@ -298,7 +314,7 @@ export class HaystackProvider {
       maxResults?: number;
       maxResultsPerFile?: number;
     },
-    onResult: (result: SearchContentResult, isDone: boolean) => void,
+    onResult: (result: SearchContentResult, isDone: boolean) => Promise<void>,
     abortSignal?: AbortSignal,
   ): Promise<void> {
     if (!this.haystack || this.haystack.getStatus() !== 'running') {
@@ -339,7 +355,7 @@ export class HaystackProvider {
 
       if (!stream) {
         // If stream isn't available, call onResult with empty result and isDone=true
-        onResult(
+        await onResult(
           {
             file: '',
             lines: [],
@@ -364,7 +380,7 @@ export class HaystackProvider {
       if (abortSignal) {
         abortSignal.addEventListener(
           'abort',
-          () => {
+          async () => {
             console.log('Search aborted by user');
             done = true;
             // Release the reader to stop receiving chunks
@@ -372,7 +388,7 @@ export class HaystackProvider {
               console.error('Error cancelling reader:', error);
             });
             // Notify caller of the aborted search
-            onResult(
+            await onResult(
               {
                 file: '',
                 lines: [],
@@ -399,7 +415,7 @@ export class HaystackProvider {
           // Process any remaining data in the buffer
           if (buffer.trim()) {
             try {
-              this.processEventData(buffer, onResult);
+              await this.processEventData(buffer, onResult, true);
             } catch (e) {
               console.error('Error processing final SSE chunk:', e);
             }
@@ -419,7 +435,7 @@ export class HaystackProvider {
           buffer = buffer.substring(eventEndIndex + 2);
 
           // Process each event
-          this.processEventData(eventsData, onResult);
+          await this.processEventData(eventsData, onResult, false);
         }
       }
     } catch (error) {
@@ -431,7 +447,7 @@ export class HaystackProvider {
 
       console.error(`Search streaming error: ${error}`);
       // Notify caller of the error
-      onResult(
+      await onResult(
         {
           file: '',
           lines: [],
@@ -442,10 +458,11 @@ export class HaystackProvider {
     }
   }
 
-  private processEventData(
+  private async processEventData(
     eventsData: string,
-    onResult: (result: SearchContentResult, isDone: boolean) => void,
-  ): void {
+    onResult: (result: SearchContentResult, isDone: boolean) => Promise<void>,
+    _isFinal: boolean,
+  ): Promise<void> {
     // Split the data into individual events
     const events = eventsData.split('\n\n').filter((event) => event.trim());
 
@@ -469,16 +486,17 @@ export class HaystackProvider {
       if (eventType === 'result' && eventData) {
         try {
           // Send the result to the callback
-          onResult(JSON.parse(eventData), false);
+          await onResult(JSON.parse(eventData), false);
         } catch (e) {
           console.error('Error parsing SSE event data:', e);
         }
       } else if (eventType === 'done' && eventData) {
         try {
           // Process completion event
-          onResult(JSON.parse(eventData), true);
-        } catch {
-          onResult({ file: '', lines: [], truncate: false }, true);
+          await onResult(JSON.parse(eventData), true);
+        } catch (parseError) {
+          console.error('Error parsing SSE event data for done event:', parseError);
+          await onResult({ file: '', lines: [], truncate: false }, true);
         }
       }
     }
@@ -556,9 +574,9 @@ export class HaystackProvider {
             totalFiles: 0, // Total files unknown until first sync completes
             indexedFiles: 0,
           };
-          // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        } catch (creationError: any) {
-          const errorMessage = creationError.message || String(creationError);
+        } catch (creationError: unknown) {
+          const errorMessage =
+            creationError instanceof Error ? creationError.message : String(creationError);
           if (errorMessage.includes('Workspace already exists')) {
             console.warn(`Haystack: Workspace '${targetWorkspaceRoot}' was created concurrently.`);
             // Workspace created by another process, status will update shortly
@@ -582,7 +600,7 @@ export class HaystackProvider {
         }
       } else if (response.data.code === 0) {
         // Successfully fetched status
-        const statusData = response.data.data;
+        const statusData = response.data.data as WorkspaceStatusData;
         return {
           indexing: statusData.indexing || false,
           totalFiles: statusData.total_files || 0,
@@ -600,9 +618,8 @@ export class HaystackProvider {
           error: `Error fetching workspace status: ${response.data.message || 'Unknown error'}`,
         };
       }
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || String(error);
+    } catch (error: unknown) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
       if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
         console.error("Haystack: Failed to connect to Haystack server. Ensure it's running.");
         return {
@@ -712,8 +729,7 @@ export class HaystackProvider {
     try {
       console.log('Haystack: Starting server...');
       // Start the Haystack server
-      await this.haystack.startServer();
-      console.log('Haystack: Server started successfully');
+      this.haystack.startServer();
 
       // Create workspaces for all workspace roots
       console.log(
@@ -913,13 +929,13 @@ export class HaystackProvider {
         return {
           code: response.data.code || 200,
           message: response.data.message || 'Success',
-          data: response.data.data,
+          data: response.data.data as SearchSymbolsResponse['data'],
         };
       }
       return {
         code: response.status || 200,
         message: 'Success',
-        data: response.data,
+        data: response.data as SearchSymbolsResponse['data'],
       };
     } catch (error) {
       console.error('Failed to search symbols:', error);

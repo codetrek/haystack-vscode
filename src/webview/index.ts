@@ -217,7 +217,7 @@ function displayStreamResult(result: SearchContentResult, workspaceRoot?: string
 
       lineContentSpan.innerHTML = highlightedContent;
 
-      matchDiv.appendChild(lineNumberSpan);
+      //      matchDiv.appendChild(lineNumberSpan);
       matchDiv.appendChild(lineContentSpan);
 
       matchDiv.addEventListener('click', () => {
@@ -351,16 +351,20 @@ msgPipe.on('searchStarted', ({ workspaces }) => {
   streamResults = [];
   workspaceGroupElements = {}; // Reset stored elements
 
-  container.innerHTML = ''; // Clear previous results
+  // Clear previous results
+  container.innerHTML = '<div class="loading-spinner"></div>';
+
+  // Pre-create workspace groups in the specified order
+  const groups = document.createElement('div');
+  groups.id = 'workspace-groups';
+  groups.style.display = 'none';
 
   // Add the initial search summary that will be updated as more results come in
   const summary = document.createElement('div');
   summary.id = 'search-summary';
   summary.className = 'search-summary';
   summary.textContent = 'Searching...';
-  container.appendChild(summary);
-
-  // Pre-create workspace groups in the specified order
+  groups.appendChild(summary);
   if (workspaces && Array.isArray(workspaces)) {
     workspaces.forEach((wsInfo) => {
       const normalizedKey = normalizeWorkspaceRootForKey(wsInfo.path);
@@ -408,9 +412,10 @@ msgPipe.on('searchStarted', ({ workspaces }) => {
         toggleIcon.classList.toggle('codicon-chevron-right');
       });
 
-      container.appendChild(group);
+      groups.appendChild(group);
       workspaceGroupElements[normalizedKey] = group; // Store reference
     });
+    container.appendChild(groups);
   }
   updateSearchSummary();
 });
@@ -418,6 +423,11 @@ msgPipe.on('searchStarted', ({ workspaces }) => {
 msgPipe.on('searchResultStream', (message) => {
   if (!isSearching) {
     return; // Ignore if not searching
+  }
+
+  if (streamResults.length === 0) {
+    container.querySelector('.loading-spinner')?.remove(); // Remove the loading spinner if it exists
+    document.getElementById('workspace-groups')!.style.display = 'block';
   }
 
   // Handle streaming search result
@@ -477,7 +487,7 @@ msgPipe.on('visibilityChanged', (message) => {
   if (message.isVisible) {
     focusSearchInput();
 
-    if (searchInput.value.trim() && container.hasChildNodes()) {
+    if (searchInput.value.trim() && !container.hasChildNodes()) {
       performSearch();
     }
   }

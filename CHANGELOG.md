@@ -1,5 +1,8 @@
 # Changelog
 
+## [next]
+- Optimize UI: change fonts, narrow paddings, more space for contents, fix loading state
+
 ## [1.2.0]
 
 - Improved the search functionality to index and search across multiple workspace folders and aggregate results.

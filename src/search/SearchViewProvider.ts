@@ -75,15 +75,15 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
     }
 
     // Handle messages from the webview
-    this._msgPipeline.on('search', (data) => {
-      this._searchHandlers.handleSearch(this._msgPipeline!, data.query, data.options);
+    this._msgPipeline.on('search', async (data) => {
+      await this._searchHandlers.handleSearch(this._msgPipeline!, data.query, data.options);
     });
-    this._msgPipeline.on('cancelSearch', () => {
-      this._searchHandlers.cancelSearch(this._msgPipeline!);
+    this._msgPipeline.on('cancelSearch', async () => {
+      await this._searchHandlers.cancelSearch(this._msgPipeline!);
     });
-    this._msgPipeline.on('openFile', (data) => {
+    this._msgPipeline.on('openFile', async (data) => {
       if (data.file && typeof data.line === 'number' && data.workspaceRoot) {
-        this._searchHandlers.handleOpenFile(
+        await this._searchHandlers.handleOpenFile(
           data.file,
           data.line,
           data.workspaceRoot,
@@ -106,8 +106,8 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
     });
 
     // Handle visibility changes
-    webviewView.onDidChangeVisibility(() => {
-      this._searchHandlers.handleVisibilityChange(this._msgPipeline!, webviewView.visible);
+    webviewView.onDidChangeVisibility(async () => {
+      await this._searchHandlers.handleVisibilityChange(this._msgPipeline!, webviewView.visible);
     });
 
     if (this._pendingSearchText) {
@@ -125,18 +125,18 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
    * Initiates a search with the provided text in the search view
    * @param text The text to search for
    */
-  public searchText(text: string): void {
+  public async searchText(text: string) {
     if (!this._view) {
       // Store the search text to use when the view becomes available
       // and trigger the focus command to create the view
       console.log('Search view not available, creating it first');
       this._pendingSearchText = text;
-      vscode.commands.executeCommand('haystackSearch.focus');
+      await vscode.commands.executeCommand('haystackSearch.focus');
       return;
     }
 
     // Send a message to the webview to update the search input
-    this._view.webview.postMessage({
+    await this._view.webview.postMessage({
       type: 'setSearchText',
       text,
     });
@@ -149,24 +149,24 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
     };
 
     // Use the search handlers to perform the search immediately
-    this._searchHandlers.handleSearch(this._msgPipeline!, text, defaultOptions);
+    await this._searchHandlers.handleSearch(this._msgPipeline!, text, defaultOptions);
   }
 
   /**
    * Cancels the current search in the search view
    */
-  public cancelSearch(): void {
+  public async cancelSearch() {
     if (!this._view) {
       return;
     }
     // Cancel the search using the search handlers
-    this._searchHandlers.cancelSearch(this._msgPipeline!);
+    await this._searchHandlers.cancelSearch(this._msgPipeline!);
   }
 
   /**
    * Focuses the search input in the search view
    */
-  public focusSearchInput(): void {
+  public focusSearchInput() {
     if (!this._view) {
       // View is not available, trigger the focus command to create the view
       console.log('Search view not available, creating it first');

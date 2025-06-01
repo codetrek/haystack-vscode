@@ -4,22 +4,25 @@ import * as path from 'path';
 import axios from 'axios';
 import { exec } from 'child_process';
 import { EventEmitter } from 'events';
+import https from 'https';
+import http from 'http';
+import AdmZip from 'adm-zip';
 
 const supportedPlatforms = {
-  "linux-amd64": true,
-  "linux-arm64": true,
-  "darwin-amd64": true,
-  "darwin-arm64": true,
-  "windows-amd64": true,
-  "windows-arm64": true,
-}
+  'linux-amd64': true,
+  'linux-arm64': true,
+  'darwin-amd64': true,
+  'darwin-arm64': true,
+  'windows-amd64': true,
+  'windows-arm64': true,
+};
 
 // Haystack ports
-const LOCAL_PORT= 13135;
-const GLOBAL_PORT= 13134;
+const LOCAL_PORT = 13135;
+const GLOBAL_PORT = 13134;
 
 // Haystack config
-const haystackConfig= (context: vscode.ExtensionContext) => `
+const haystackConfig = (context: vscode.ExtensionContext) => `
 global:
   data_path: ${path.join(context.globalStorageUri.fsPath, 'data')}
   port: ${LOCAL_PORT}
@@ -27,28 +30,28 @@ client:
   default_limit:
     max_results: 500
     max_results_per_file: 50
-`
+`;
 
 const platform = () => {
   if (process.platform === 'win32') {
     return 'windows';
   }
   return process.platform;
-}
+};
 
 const arch = () => {
   if (process.arch === 'x64') {
     return 'amd64';
   }
   return process.arch;
-}
+};
 
 // Get the appropriate host based on the environment
 function getHaystackHost(): string {
   // If we're in a remote environment, use the remote host
   if (vscode.env.remoteName) {
-      // In remote environment, we can safely use localhost
-      return 'localhost';
+    // In remote environment, we can safely use localhost
+    return 'localhost';
   }
 
   // In local environment, prefer 127.0.0.1 for better compatibility
@@ -56,40 +59,36 @@ function getHaystackHost(): string {
 }
 
 const currentPlatform = `${platform()}-${arch()}`;
-const isHaystackSupported = supportedPlatforms[currentPlatform as keyof typeof supportedPlatforms] || false;
+const isHaystackSupported =
+  supportedPlatforms[currentPlatform as keyof typeof supportedPlatforms] || false;
 const HAYSTACK_DOWNLOAD_URL = 'https://github.com/CodeTrek/haystack/releases/download/';
 const HAYSTACK_DOWNLOAD_URL_FALLBACK = 'https://haystack.codetrek.cn/download/';
 
-type Status =
-  'initializing'|
-  'starting'|
-  'running'|
-  'unsupported'|
-  'error';
+type Status = 'initializing' | 'starting' | 'running' | 'unsupported' | 'error';
 
 type InstallStatus =
-  'initializing'|
-  'downloading'|
-  'extracting'|
-  'unsupported'|
-  'error'|
-  'installed'|
-  'not-installed';
+  | 'initializing'
+  | 'downloading'
+  | 'extracting'
+  | 'unsupported'
+  | 'error'
+  | 'installed'
+  | 'not-installed';
 
 export type HaystackEvent =
-  'status-change' |
-  'install-status-change' |
-  'starting' |
-  'download-progress' |
-  'error' |
-  'connected';
+  | 'status-change'
+  | 'install-status-change'
+  | 'starting'
+  | 'download-progress'
+  | 'error'
+  | 'connected';
 
 type DownloadProgress = {
   url: string;
   totalSize: number;
   downloadedSize: number;
   percent: number;
-}
+};
 
 export class Haystack extends EventEmitter {
   private coreFilePath: string;
@@ -105,17 +104,20 @@ export class Haystack extends EventEmitter {
   private _startRetry: number;
   private _connected: boolean;
 
-  constructor(private context: vscode.ExtensionContext, localServer: boolean) {
+  constructor(
+    private context: vscode.ExtensionContext,
+    localServer: boolean,
+  ) {
     super();
     // Use globalStorageUri for persistent storage across extension updates
     this.binDir = this.context.globalStorageUri.fsPath;
     this.coreFilePath = path.join(this.binDir, this.getExecutableName());
-    this.downloadZipPath = path.join(this.context.globalStorageUri.fsPath, "download");
-    this.builtinZipPath = path.join(this.context.extensionPath, "pkgs"); // We may have builtin zip files
+    this.downloadZipPath = path.join(this.context.globalStorageUri.fsPath, 'download');
+    this.builtinZipPath = path.join(this.context.extensionPath, 'pkgs'); // We may have builtin zip files
     this._status = 'initializing';
     this._installStatus = 'initializing';
     this.runningPort = localServer ? LOCAL_PORT : GLOBAL_PORT;
-    this.haystackVersion = "v" + context.extension.packageJSON.haystackVersion;
+    this.haystackVersion = 'v' + context.extension.packageJSON.haystackVersion;
     this.HAYSTACK_ZIP_FILE_NAME = `haystack-${currentPlatform}-${this.haystackVersion}.zip`;
     this._startRetry = 0;
     this._connected = false;
@@ -123,14 +125,14 @@ export class Haystack extends EventEmitter {
       url: '',
       totalSize: 0,
       downloadedSize: 0,
-      percent: 0
+      percent: 0,
     };
     setTimeout(async () => {
       await this.doInit();
     }, 1);
   }
 
-  public async post(uri: string, data: any) {
+  public async post(uri: string, data: unknown) {
     if (this._status !== 'running') {
       throw new Error('Haystack is not running');
     }
@@ -140,17 +142,21 @@ export class Haystack extends EventEmitter {
       const response = await axios.post(url, data);
       this.connected = true;
       return response;
-    } catch (error: any) {
-      const errorMessage = error.response?.data?.message || error.message || String(error);
+    } catch (error: unknown) {
+      const errorMessage =
+        (error as { response?: { data?: { message?: string } }; message?: string })?.response?.data
+          ?.message ||
+        (error as { message?: string })?.message ||
+        String(error);
       if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
         this.connected = false;
       }
 
-      throw error
+      throw error;
     }
   }
 
-  public async postStream(uri: string, data: any): Promise<ReadableStream<Uint8Array>> {
+  public async postStream(uri: string, data: unknown): Promise<ReadableStream<Uint8Array>> {
     if (this._status !== 'running') {
       throw new Error('Haystack is not running');
     }
@@ -163,9 +169,9 @@ export class Haystack extends EventEmitter {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'Accept': 'text/event-stream'
+          Accept: 'text/event-stream',
         },
-        body: JSON.stringify(data)
+        body: JSON.stringify(data),
       });
 
       if (!response.ok) {
@@ -176,8 +182,8 @@ export class Haystack extends EventEmitter {
 
       // Return the readable stream from the response
       return response.body as ReadableStream<Uint8Array>;
-    } catch (error: any) {
-      const errorMessage = error.message || String(error);
+    } catch (error: unknown) {
+      const errorMessage = (error as { message?: string })?.message || String(error);
       if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
         this.connected = false;
       }
@@ -239,7 +245,7 @@ export class Haystack extends EventEmitter {
       this._status = newStatus;
       this.emit('status-change', {
         oldStatus,
-        newStatus
+        newStatus,
       });
       if (newStatus === 'error') {
         this.emit('error', { message: 'Haystack status changed to error state' });
@@ -263,7 +269,7 @@ export class Haystack extends EventEmitter {
       this._installStatus = newStatus;
       this.emit('install-status-change', {
         oldStatus,
-        newStatus
+        newStatus,
       });
 
       if (newStatus === 'error') {
@@ -307,7 +313,9 @@ export class Haystack extends EventEmitter {
       this.installStatus = 'installed';
     } catch (error) {
       // Log if the core executable is not found.
-      console.log(`Haystack Core not found or accessible at: ${this.coreFilePath}.`);
+      console.log(
+        `Haystack Core not found or accessible at: ${this.coreFilePath}, error: ${error}`,
+      );
       this.installStatus = 'not-installed';
     }
 
@@ -324,7 +332,7 @@ export class Haystack extends EventEmitter {
 
     if (this.installStatus !== 'installed') {
       this.status = 'error';
-      return
+      return;
     }
 
     if (this.status !== 'running') {
@@ -351,7 +359,7 @@ export class Haystack extends EventEmitter {
         this.installStatus = 'installed';
         return;
       } catch (error) {
-        console.log('No downloaded zip file found');
+        console.log('No downloaded zip file found:', error);
       }
 
       // Step 2: Check if zip exists in builtin directory
@@ -364,7 +372,7 @@ export class Haystack extends EventEmitter {
         console.log(`Installed from builtin zip file: ${builtinZipFilePath}`);
         return;
       } catch (error) {
-        console.log('No builtin zip file found');
+        console.log('No builtin zip file found:', error);
       }
 
       // Step 3: Try downloading from primary URL
@@ -403,31 +411,28 @@ export class Haystack extends EventEmitter {
   }
 
   private async downloadFile(url: string, destination: string): Promise<void> {
-    let err: any;
+    let err: Error | undefined;
     for (let i = 0; i < 3; i++) {
       try {
         // Check if the file already exists
         await this.downloadFileWithNoRetry(url, destination);
         return;
       } catch (error) {
-        err = error;
+        err = error as Error;
       }
       // delay before retrying
-      await new Promise(resolve => setTimeout(resolve, 1000 * (i + 1)));
+      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1)));
     }
 
     throw new Error(`Failed to download file after 3 attempts: ${url}, err: ${err}`);
   }
 
-  private async downloadFileWithNoRetry(url: string, destination: string): Promise<void> {
-    const https = require('https');
-    const http = require('http');
-
+  private downloadFileWithNoRetry(url: string, destination: string): Promise<void> {
     this._downloadProgress = {
       url,
       totalSize: 0,
       downloadedSize: 0,
-      percent: 0
+      percent: 0,
     };
     this.emit('download-progress', this._downloadProgress);
 
@@ -435,98 +440,107 @@ export class Haystack extends EventEmitter {
       const client = url.startsWith('https') ? https : http;
       const file = fs.createWriteStream(destination);
 
-      client.get(url, (response: any) => {
-        if (response.statusCode >= 300 && response.statusCode < 400 && response.headers.location) {
-          file.close();
-          // Handle redirects
-          fs.unlink(destination, () => {
-            this.downloadFile(response.headers.location, destination)
-              .then(resolve)
-              .catch(reject);
-          });
-          return;
-        }
-
-        if (response.statusCode !== 200) {
-          file.close();
-          fs.unlink(destination, () => {});
-          reject(new Error(`Failed to download, status code: ${response.statusCode}`));
-          return;
-        }
-
-        const totalSize = parseInt(response.headers['content-length'] || '0', 10);
-        console.log(`Total size: ${totalSize} bytes`);
-        let downloadedSize = 0;
-        let lastReportedPercent = 0;
-
-        const percent = 0;
-        this._downloadProgress = {
-          url,
-          totalSize,
-          downloadedSize,
-          percent,
-        };
-        this.emit('download-progress', this._downloadProgress);
-
-        response.on('data', (chunk: Buffer) => {
-          downloadedSize += chunk.length;
-
-          // Report progress at most every 5% to avoid excessive events
-          if (totalSize > 0) {
-            const percent = Math.floor((downloadedSize / totalSize) * 100);
-            this._downloadProgress = {
-              url,
-              totalSize,
-              downloadedSize,
-              percent
-            };
+      client
+        .get(url, (response: http.IncomingMessage) => {
+          if (
+            response.statusCode &&
+            response.statusCode >= 300 &&
+            response.statusCode < 400 &&
+            response.headers.location
+          ) {
+            file.close();
+            // Handle redirects
+            fs.unlink(destination, () => {
+              this.downloadFile(response.headers.location!, destination)
+                .then(resolve)
+                .catch(reject);
+            });
+            return;
           }
 
-          if (this._downloadProgress.percent >= lastReportedPercent + 5 ||
-            this._downloadProgress.percent === 100) {
-            // Emit download progress event
-            this.emit('download-progress', this._downloadProgress);
-            lastReportedPercent = this._downloadProgress.percent;
+          if (response.statusCode !== 200) {
+            file.close();
+            fs.unlink(destination, () => {});
+            reject(new Error(`Failed to download, status code: ${response.statusCode}`));
+            return;
           }
-        });
 
-        response.pipe(file);
+          const totalSize = parseInt(response.headers['content-length'] || '0', 10);
+          console.log(`Total size: ${totalSize} bytes`);
+          let downloadedSize = 0;
+          let lastReportedPercent = 0;
 
-        file.on('finish', () => {
-          file.close();
+          const percent = 0;
           this._downloadProgress = {
             url,
             totalSize,
             downloadedSize,
-            percent: 100
+            percent,
           };
-          // Ensure we emit 100% at the end
           this.emit('download-progress', this._downloadProgress);
-          resolve();
+
+          response.on('data', (chunk: Buffer) => {
+            downloadedSize += chunk.length;
+
+            // Report progress at most every 5% to avoid excessive events
+            if (totalSize > 0) {
+              const percent = Math.floor((downloadedSize / totalSize) * 100);
+              this._downloadProgress = {
+                url,
+                totalSize,
+                downloadedSize,
+                percent,
+              };
+            }
+
+            if (
+              this._downloadProgress.percent >= lastReportedPercent + 5 ||
+              this._downloadProgress.percent === 100
+            ) {
+              // Emit download progress event
+              this.emit('download-progress', this._downloadProgress);
+              lastReportedPercent = this._downloadProgress.percent;
+            }
+          });
+
+          response.pipe(file);
+
+          file.on('finish', () => {
+            file.close();
+            this._downloadProgress = {
+              url,
+              totalSize,
+              downloadedSize,
+              percent: 100,
+            };
+            // Ensure we emit 100% at the end
+            this.emit('download-progress', this._downloadProgress);
+            resolve();
+          });
+        })
+        .on('error', (err: Error) => {
+          file.close();
+          fs.unlink(destination, () => {});
+          this.emit('error', {
+            message: `Download failed: ${err.message}`,
+            error: err,
+          });
+          reject(err);
         });
-      }).on('error', (err: Error) => {
-        file.close();
-        fs.unlink(destination, () => {});
-        this.emit('error', {
-          message: `Download failed: ${err.message}`,
-          error: err
-        });
-        reject(err);
-      });
 
       file.on('error', (err: Error) => {
         file.close();
         fs.unlink(destination, () => {});
         this.emit('error', {
           message: `File write error: ${err.message}`,
-          error: err
+          error: err,
         });
         reject(err);
       });
     });
   }
 
-  private async checkExistingZip(zipFilePath: string, deleteIfSmall: boolean = false): Promise<void> {
+  private async checkExistingZip(zipFilePath: string, deleteIfSmall = false): Promise<void> {
     try {
       // Check if file exists
       await fs.promises.access(zipFilePath, fs.constants.F_OK);
@@ -541,7 +555,9 @@ export class Haystack extends EventEmitter {
           console.log(`Deleted small zip file: ${zipFilePath}`);
         }
 
-        throw new Error(`Zip file exists but is too small (${stats.size} bytes, minimum: ${minSizeBytes} bytes)`);
+        throw new Error(
+          `Zip file exists but is too small (${stats.size} bytes, minimum: ${minSizeBytes} bytes)`,
+        );
       }
 
       console.log(`Verified zip file: ${zipFilePath}`);
@@ -554,9 +570,8 @@ export class Haystack extends EventEmitter {
     }
   }
 
-  private async extractZip(zipFilePath: string): Promise<void> {
+  private extractZip(zipFilePath: string): Promise<void> {
     // Use a zip extraction method compatible with your environment
-    const AdmZip = require('adm-zip');
     const zip = new AdmZip(zipFilePath);
 
     console.log(`Extracting zip file: ${zipFilePath}`);
@@ -591,12 +606,13 @@ export class Haystack extends EventEmitter {
     try {
       const version = await fs.promises.readFile(path.join(this.binDir, 'version.txt'), 'utf8');
       if (this.isVersionCompatible(version)) {
-        return
+        return;
       }
       await fs.promises.unlink(this.coreFilePath);
       this.installStatus = 'not-installed';
-      console.log("The installed Haystack is not compatible.");
+      console.log('The installed Haystack is not compatible.');
     } catch (error) {
+      console.error(`Failed to read version file: ${error}`);
     }
 
     // shutdown the Haystack server and try to unlink the core file again
@@ -613,13 +629,13 @@ export class Haystack extends EventEmitter {
   private async shutdown(): Promise<void> {
     try {
       const url = `${this.getUrl()}/api/v1/server/stop`;
-      console.log("Shutting down Haystack server...");
+      console.log('Shutting down Haystack server...');
       await axios.post(url);
       await this.waitingForShutdown();
       this.status = 'initializing';
-      console.log("Haystack server stopped for upgrade.");
+      console.log('Haystack server stopped for upgrade.');
     } catch (error) {
-      console.log("Shutdown Haystack server failed:", error);
+      console.log('Shutdown Haystack server failed:', error);
     }
   }
 
@@ -628,17 +644,17 @@ export class Haystack extends EventEmitter {
     for (;;) {
       const elapsedSeconds = (Date.now() - start) / 1000;
       if (elapsedSeconds > 20) {
-        console.log("Haystack server shutdown timeout.");
-        return
+        console.log('Haystack server shutdown timeout.');
+        return;
       }
 
       const url = `${this.getUrl()}/api/v1/server/status`;
       try {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        await new Promise((resolve) => setTimeout(resolve, 1000));
         await axios.get(url);
-      } catch (error) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
-        return
+      } catch {
+        await new Promise((resolve) => setTimeout(resolve, 1000));
+        return;
       }
     }
   }
@@ -646,60 +662,62 @@ export class Haystack extends EventEmitter {
   private async start(): Promise<void> {
     // Check if Haystack is running
     if (await this.isRunning()) {
-      console.log("Haystack is already running.");
+      console.log('Haystack is already running.');
       this.status = 'running';
       return;
     }
 
     if (this._startRetry > 10) {
       this._startRetry = 0;
-      console.error("Haystack server start failed.");
+      console.error('Haystack server start failed.');
       this.status = 'error';
       return;
     }
     this.emit('starting', this._startRetry);
     this.startServer();
 
-    await new Promise(resolve => setTimeout(resolve, 1000));
+    await new Promise((resolve) => setTimeout(resolve, 1000));
     if (await this.isRunning()) {
       this.status = 'running';
-      console.log("Haystack server started.");
+      console.log('Haystack server started.');
       return;
     }
 
-    setTimeout(()=> {
+    setTimeout(() => {
       this._startRetry += 1;
-      this.start()
+      this.start();
     }, 3000);
   }
 
   private async isRunning(): Promise<boolean> {
-      // Check if Haystack is running
-      try {
-        const url = `${this.getUrl()}/health`;
-        const response = await axios.get(url);
-        if (response.status === 200) {
-          return true;
-        }
-      } catch (error) {}
+    // Check if Haystack is running
+    try {
+      const url = `${this.getUrl()}/health`;
+      const response = await axios.get(url);
+      if (response.status === 200) {
+        return true;
+      }
+    } catch (error) {
+      console.error(`Haystack server is not running: ${error}`);
+    }
 
-      return false;
+    return false;
   }
 
- public async startServer(): Promise<boolean> {
-  // run this.coreFilePath server start to start the server
-  try {
-    const command = `"${this.coreFilePath}" server start`;
-    console.log(`Try starting Haystack server '${command}' (retry: ${this._startRetry})...`);
-    exec(command);
-    console.log("Haystack start command executed successfully");
-    return true;
-  } catch (error) {
-    console.error(`Failed to start Haystack: ${error}`);
-  }
+  public startServer(): boolean {
+    // run this.coreFilePath server start to start the server
+    try {
+      const command = `"${this.coreFilePath}" server start`;
+      console.log(`Try starting Haystack server '${command}' (retry: ${this._startRetry})...`);
+      exec(command);
+      console.log('Haystack start command executed successfully');
+      return true;
+    } catch (error) {
+      console.error(`Failed to start Haystack: ${error}`);
+    }
 
-  return false;
-}
+    return false;
+  }
 
   private isVersionCompatible(version: string): boolean {
     // Remove 'v' prefix if exists
@@ -727,7 +745,7 @@ export class Haystack extends EventEmitter {
    * @param listener The callback function to be called when the event is emitted
    * @returns The Haystack instance for chaining
    */
-  public on(event: HaystackEvent, listener: (...args: any[]) => void): this {
+  public on(event: HaystackEvent, listener: (...args: unknown[]) => void): this {
     return super.on(event, listener);
   }
 
@@ -737,7 +755,7 @@ export class Haystack extends EventEmitter {
    * @param listener The callback function to be called when the event is emitted
    * @returns The Haystack instance for chaining
    */
-  public once(event: HaystackEvent, listener: (...args: any[]) => void): this {
+  public once(event: HaystackEvent, listener: (...args: unknown[]) => void): this {
     return super.once(event, listener);
   }
 
@@ -747,7 +765,7 @@ export class Haystack extends EventEmitter {
    * @param listener The callback function to be removed
    * @returns The Haystack instance for chaining
    */
-  public off(event: HaystackEvent, listener: (...args: any[]) => void): this {
+  public off(event: HaystackEvent, listener: (...args: unknown[]) => void): this {
     return super.off(event, listener);
   }
 
@@ -759,5 +777,4 @@ export class Haystack extends EventEmitter {
   public removeAllListeners(event?: HaystackEvent): this {
     return super.removeAllListeners(event);
   }
-
 }

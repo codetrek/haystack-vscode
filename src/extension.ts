@@ -1,38 +1,38 @@
-import * as vscode from 'vscode'
-import { SearchViewProvider } from './search/SearchViewProvider'
-import { HaystackProvider } from './core/HaystackProvider'
-import { Haystack } from './core/Haystack'
-import { showFunctionSymbolsQuickPick } from './search/searchFunctions'
+import * as vscode from 'vscode';
+import { SearchViewProvider } from './search/SearchViewProvider';
+import { HaystackProvider } from './core/HaystackProvider';
+import { Haystack } from './core/Haystack';
+import { showFunctionSymbolsQuickPick } from './search/searchFunctions';
 
 // Constants
 const isDev = () =>
   process.env.VSCODE_DEBUG_MODE === 'true' ||
   process.env.IS_DEV === 'true' ||
-  __dirname.includes('.vscode')
+  __dirname.includes('.vscode');
 
 // Global state
-let haystackProvider: HaystackProvider | undefined
-let searchViewProvider: SearchViewProvider | undefined
-let haystack: Haystack | undefined
+let haystackProvider: HaystackProvider | undefined;
+let searchViewProvider: SearchViewProvider | undefined;
+let haystack: Haystack | undefined;
 
 /**
  * This function is called when your extension is activated
  */
 export function activate(context: vscode.ExtensionContext) {
-  console.log(`haystack is running in ${isDev() ? 'dev' : 'prod'} mode`)
+  console.log(`haystack is running in ${isDev() ? 'dev' : 'prod'} mode`);
   // Simple activation logging without version checks
-  console.log('Haystack extension activated')
+  console.log('Haystack extension activated');
 
   // Initialize Haystack Core Manager and check installation
-  haystack = new Haystack(context, true)
+  haystack = new Haystack(context, true);
   console.log(
     `haystack is supported on ${haystack.getCurrentPlatform()}? ${haystack.getIsSupported() ? 'yes' : 'no'}`,
-  )
+  );
 
   // Pass necessary info to HaystackProvider if needed
   // Example: haystackProvider = new HaystackProvider(haystackCoreManager.getCorePath());
-  haystackProvider = new HaystackProvider(haystack)
-  searchViewProvider = new SearchViewProvider(context, haystackProvider, haystack.getIsSupported())
+  haystackProvider = new HaystackProvider(haystack);
+  searchViewProvider = new SearchViewProvider(context, haystackProvider, haystack.getIsSupported());
 
   // Register search view
   context.subscriptions.push(
@@ -41,55 +41,55 @@ export function activate(context: vscode.ExtensionContext) {
         retainContextWhenHidden: true,
       },
     }),
-  )
+  );
 
   // Register command to search selected text
   context.subscriptions.push(
     vscode.commands.registerCommand('haystack.searchSelectedText', async () => {
-      const editor = vscode.window.activeTextEditor
+      const editor = vscode.window.activeTextEditor;
 
       // focus the view first
       // This is a workaround to ensure the view is created before we try to focus it
       // This is necessary because the view may not be created yet
       // when the command is executed
-      await vscode.commands.executeCommand('haystackSearch.focus')
+      await vscode.commands.executeCommand('haystackSearch.focus');
 
       // No active editor
       if (!editor) {
-        return
+        return;
       }
 
-      let searchText = ''
-      const selection = editor.selection
+      let searchText = '';
+      const selection = editor.selection;
 
       if (!selection.isEmpty) {
         // Use selected text if available
-        searchText = editor.document.getText(selection)
+        searchText = editor.document.getText(selection);
       } else {
         // No selection, try word at cursor
-        const wordRange = editor.document.getWordRangeAtPosition(selection.active)
+        const wordRange = editor.document.getWordRangeAtPosition(selection.active);
         if (wordRange) {
-          searchText = editor.document.getText(wordRange)
+          searchText = editor.document.getText(wordRange);
         }
       }
 
       // Perform search if we found text and the provider exists
       if (searchText && searchViewProvider) {
-        searchViewProvider.searchText(searchText)
+        searchViewProvider.searchText(searchText);
       }
       // If no text was found (no selection, no word at cursor),
       // the view is already focused, so nothing more to do.
     }),
-  )
+  );
 
   // Register command to focus the search input
   context.subscriptions.push(
     vscode.commands.registerCommand('haystack.focusSearchInput', () => {
       if (searchViewProvider) {
-        searchViewProvider.focusSearchInput()
+        searchViewProvider.focusSearchInput();
       }
     }),
-  )
+  );
 
   // Register command to sync the workspace index
   context.subscriptions.push(
@@ -102,56 +102,56 @@ export function activate(context: vscode.ExtensionContext) {
             cancellable: false,
           },
           async (progress) => {
-            progress.report({ increment: 0 })
+            progress.report({ increment: 0 });
 
             try {
               // Call the sync API
-              await haystackProvider?.syncWorkspace()
-              await searchViewProvider?.updateStatusbar()
+              await haystackProvider?.syncWorkspace();
+              await searchViewProvider?.updateStatusbar();
 
-              progress.report({ increment: 100 })
-              vscode.window.showInformationMessage('Haystack index refreshed successfully.')
+              progress.report({ increment: 100 });
+              vscode.window.showInformationMessage('Haystack index refreshed successfully.');
             } catch (error) {
-              vscode.window.showErrorMessage(`Failed to refresh Haystack index: ${error}`)
+              vscode.window.showErrorMessage(`Failed to refresh Haystack index: ${error}`);
             }
           },
-        )
+        );
       } catch (error) {
-        vscode.window.showErrorMessage(`Error during Haystack index refresh: ${error}`)
+        vscode.window.showErrorMessage(`Error during Haystack index refresh: ${error}`);
       }
     }),
-  )
+  );
 
   // Register command to search function symbols
   context.subscriptions.push(
     vscode.commands.registerCommand('haystack.searchFunctionSymbols', () => {
       if (!haystackProvider) {
-        vscode.window.showErrorMessage('Haystack provider not initialized')
-        return
+        vscode.window.showErrorMessage('Haystack provider not initialized');
+        return;
       }
 
       // Get selected text from editor if any
-      let initialValue: string | undefined
-      const editor = vscode.window.activeTextEditor
+      let initialValue: string | undefined;
+      const editor = vscode.window.activeTextEditor;
       if (editor && !editor.selection.isEmpty) {
-        initialValue = editor.document.getText(editor.selection)
+        initialValue = editor.document.getText(editor.selection);
       }
 
       // Show the QuickPick with initial value if selected
-      showFunctionSymbolsQuickPick(haystackProvider, initialValue)
+      showFunctionSymbolsQuickPick(haystackProvider, initialValue);
     }),
-  )
+  );
 
   // Register command to cancel search
   context.subscriptions.push(
     vscode.commands.registerCommand('haystack.cancelSearch', () => {
       try {
-        searchViewProvider?.cancelSearch()
+        searchViewProvider?.cancelSearch();
       } catch (error) {
-        vscode.window.showErrorMessage(`Error cancelling search: ${error}`)
+        vscode.window.showErrorMessage(`Error cancelling search: ${error}`);
       }
     }),
-  )
+  );
 
   // Register command to start Haystack server
   context.subscriptions.push(
@@ -164,112 +164,112 @@ export function activate(context: vscode.ExtensionContext) {
             cancellable: false,
           },
           async (progress) => {
-            progress.report({ increment: 0 })
+            progress.report({ increment: 0 });
 
             try {
               // Start the server
-              await haystackProvider?.getHaystack().startServer()
-              await searchViewProvider?.updateStatusbar()
+              await haystackProvider?.getHaystack().startServer();
+              await searchViewProvider?.updateStatusbar();
 
-              progress.report({ increment: 100 })
-              vscode.window.showInformationMessage('Haystack server started successfully.')
+              progress.report({ increment: 100 });
+              vscode.window.showInformationMessage('Haystack server is starting...');
             } catch (error) {
-              vscode.window.showErrorMessage(`Failed to start Haystack server: ${error}`)
+              vscode.window.showErrorMessage(`Failed to start Haystack server: ${error}`);
             }
           },
-        )
+        );
       } catch (error) {
-        vscode.window.showErrorMessage(`Error starting Haystack server: ${error}`)
+        vscode.window.showErrorMessage(`Error starting Haystack server: ${error}`);
       }
     }),
-  )
+  );
 
   // Register command to open settings
   context.subscriptions.push(
     vscode.commands.registerCommand('haystack.openSettings', () => {
-      vscode.commands.executeCommand('workbench.action.openSettings', 'haystack.search')
+      vscode.commands.executeCommand('workbench.action.openSettings', 'haystack.search');
     }),
-  )
+  );
 
   // Function to update server running status in VS Code context
   async function updateServerConnectedContext() {
     if (!haystack) {
-      return
+      return;
     }
 
-    console.log(`Haystack connected: ${haystack.connected}`)
+    console.log(`Haystack connected: ${haystack.connected}`);
 
-    await vscode.commands.executeCommand('setContext', 'haystackConnected', haystack.connected)
+    await vscode.commands.executeCommand('setContext', 'haystackConnected', haystack.connected);
   }
 
   async function updateServerInstallContext() {
     if (!haystack) {
-      return
+      return;
     }
 
-    const installed = haystack.getInstallStatus() === 'installed'
-    await vscode.commands.executeCommand('setContext', 'haystackInstalled', installed)
+    const installed = haystack.getInstallStatus() === 'installed';
+    await vscode.commands.executeCommand('setContext', 'haystackInstalled', installed);
   }
 
   // Update server running status initially
-  updateServerConnectedContext()
+  updateServerConnectedContext();
 
   haystack.on('install-status-change', async (_event) => {
-    await updateServerInstallContext()
-  })
+    await updateServerInstallContext();
+  });
 
   haystack.on('connected', async (_event) => {
-    await updateServerConnectedContext()
-  })
+    await updateServerConnectedContext();
+  });
 
   // Delay workspace creation
   setTimeout(async () => {
     try {
-      await haystackProvider?.createWorkspace()
+      await haystackProvider?.createWorkspace();
     } catch {
       // Silent fail
     }
-  }, 1000)
+  }, 1000);
 
   // Listen for workspace folder changes
   context.subscriptions.push(
     vscode.workspace.onDidChangeWorkspaceFolders(async (event) => {
       if (event.added.length > 0) {
         try {
-          await haystackProvider?.createWorkspace()
-        } catch {
-          // Silent fail
+          await haystackProvider?.createWorkspace();
+        } catch (error) {
+          console.error('Error creating workspace:', error);
         }
       }
     }),
-  )
+  );
 
   // Add provider to subscriptions for proper cleanup
   context.subscriptions.push({
     dispose: () => {
       if (haystackProvider) {
-        haystackProvider.dispose()
-        haystackProvider = undefined
+        haystackProvider.dispose();
+        haystackProvider = undefined;
       }
       if (searchViewProvider) {
-        searchViewProvider.dispose()
-        searchViewProvider = undefined
+        searchViewProvider.dispose();
+        searchViewProvider = undefined;
       }
       // No explicit dispose needed for HaystackCoreManager currently
-      haystack = undefined
+      haystack = undefined;
     },
-  })
+  });
 }
 
 export function deactivate() {
   if (haystackProvider) {
-    haystackProvider.dispose()
-    haystackProvider = undefined
+    haystackProvider.dispose();
+    haystackProvider = undefined;
   }
   if (searchViewProvider) {
-    searchViewProvider.dispose()
-    searchViewProvider = undefined
+    searchViewProvider.dispose();
+    searchViewProvider = undefined;
   }
   // No explicit deactivate needed for HaystackCoreManager currently
-  haystack = undefined
+  haystack = undefined;
 }
