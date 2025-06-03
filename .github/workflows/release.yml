@@ -50,7 +50,8 @@ jobs:
     if: needs.prepare.outputs.should_release == 'true'
     strategy:
       matrix:
-        platform: [darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64, windows-arm64]
+        platform:
+          [darwin-amd64, darwin-arm64, linux-amd64, linux-arm64, windows-amd64, windows-arm64]
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -72,7 +73,7 @@ jobs:
           HAYSTACK_VERSION=${{ needs.prepare.outputs.haystackVersion }}
           PLATFORM=${{ matrix.platform }}
           DOWNLOAD_URL="https://github.com/ai-microsoft/haystack/releases/download/v${HAYSTACK_VERSION}/haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip"
-          
+
           echo "Downloading Haystack binary from $DOWNLOAD_URL"
           curl -L -o "pkgs/haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip" "$DOWNLOAD_URL"
 
@@ -82,13 +83,13 @@ jobs:
           HAYSTACK_VERSION=${{ needs.prepare.outputs.haystackVersion }}
           PLATFORM=${{ matrix.platform }}
           EXTENSION_VERSION=${{ needs.prepare.outputs.version }}
-          
+
           # Build the extension with only the platform-specific binary
           find pkgs -type f -not -name "haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip" -delete
-          
+
           # Build the extension package
           npm run build:prod
-          
+
           # Rename the output file to include platform
           platform_name=$(echo $PLATFORM | sed 's/-/_/g')
           npx vsce package --no-dependencies -o "haystack-search-${EXTENSION_VERSION}-${platform_name}.vsix"
@@ -97,7 +98,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: vsix-${{ matrix.platform }}
-          path: "*.vsix"
+          path: '*.vsix'
           retention-days: 1
 
   create-release:
@@ -133,28 +134,38 @@ jobs:
           git tag -a "v${{ needs.prepare.outputs.version }}" -m "Release v${{ needs.prepare.outputs.version }}"
           git push origin "v${{ needs.prepare.outputs.version }}"
 
-      - name: Create GitHub Release
-        id: create_release
-        uses: softprops/action-gh-release@v1
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
-          tag_name: "v${{ needs.prepare.outputs.version }}"
-          name: "Haystack Search v${{ needs.prepare.outputs.version }}"
-          body: |
-            # Haystack Search v${{ needs.prepare.outputs.version }}
-            
-            ${{ env.CHANGELOG }}
-            
-            Using Haystack Core v${{ needs.prepare.outputs.haystackVersion }}
-            
-            ## Platform-specific downloads
-            Please download the extension package for your specific platform:
-            - Windows (x64): haystack-search-${{ needs.prepare.outputs.version }}-windows_amd64.vsix
-            - Windows (ARM64): haystack-search-${{ needs.prepare.outputs.version }}-windows_arm64.vsix
-            - macOS (Intel): haystack-search-${{ needs.prepare.outputs.version }}-darwin_amd64.vsix
-            - macOS (Apple Silicon): haystack-search-${{ needs.prepare.outputs.version }}-darwin_arm64.vsix
-            - Linux (x64): haystack-search-${{ needs.prepare.outputs.version }}-linux_amd64.vsix
-            - Linux (ARM64): haystack-search-${{ needs.prepare.outputs.version }}-linux_arm64.vsix
-          files: dist/*.vsix
-          draft: false
-          prerelease: false
+      - name: Get previous version
+        id: prev-version
+        run: |
+          # Get the latest tag before current version
+          CURRENT_VERSION="v${{ needs.prepare.outputs.version }}"
+          PREV_VERSION=$(git tag -l "v*" | grep -v "$CURRENT_VERSION" | sort -V | tail -1)
+          echo "prev_version=$PREV_VERSION" >> $GITHUB_OUTPUT
+          echo "Previous version: $PREV_VERSION"
+
+      - name: Create release notes
+        run: |
+          CURRENT_VERSION="v${{ needs.prepare.outputs.version }}"
+          PREV_VERSION="${{ steps.prev-version.outputs.prev_version }}"
+
+          cat > release_notes.md << EOF
+          ## What's Changed
+
+          ${{ env.CHANGELOG }}
+
+          ## Full Changelog
+          [$PREV_VERSION...$CURRENT_VERSION](https://github.com/ai-microsoft/haystack-vscode/compare/$PREV_VERSION...$CURRENT_VERSION)
+          EOF
+
+      - name: Create and upload to GitHub Release
+        run: |
+          # Create the release with custom notes
+          gh release create "v${{ needs.prepare.outputs.version }}" \
+            --title "v${{ needs.prepare.outputs.version }}" \
+            --notes-file release_notes.md
+
+          # Upload artifacts
+          gh release upload "v${{ needs.prepare.outputs.version }}" dist/*.vsix --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
