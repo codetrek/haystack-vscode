@@ -1,0 +1,77 @@
+name: 'Build Extension Package'
+description: 'Build VS Code extension package with specified binaries'
+inputs:
+  extension-version:
+    description: 'Extension version'
+    required: true
+  platform:
+    description: 'Platform for naming (optional, for platform-specific builds)'
+    required: false
+    default: ''
+  package-type:
+    description: 'Package type: platform-specific or all-in-one'
+    required: true
+  haystack-version:
+    description: 'Haystack version'
+    required: true
+outputs:
+  package-name:
+    description: 'Name of the generated package'
+    value: ${{ steps.build.outputs.package-name }}
+runs:
+  using: 'composite'
+  steps:
+    - name: Clean up any existing VSIX files
+      run: |
+        echo "Cleaning up any existing VSIX files..."
+        rm -f *.vsix
+        echo "Cleanup completed"
+      shell: bash
+
+    - name: Prepare binaries
+      id: prepare
+      run: |
+        HAYSTACK_VERSION="${{ inputs.haystack-version }}"
+        PLATFORM="${{ inputs.platform }}"
+        PACKAGE_TYPE="${{ inputs.package-type }}"
+
+        mkdir -p pkgs
+
+        if [[ "$PACKAGE_TYPE" == "platform-specific" ]]; then
+          FILENAME="haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip"
+          cp "binaries/$FILENAME" "pkgs/$FILENAME"
+          echo "Prepared binary for platform $PLATFORM: pkgs/$FILENAME"
+        else
+          cp binaries/* pkgs/
+          echo "All binaries prepared:"
+          ls -la pkgs/
+        fi
+      shell: bash
+
+    - name: Build extension package
+      id: build
+      run: |
+        EXTENSION_VERSION="${{ inputs.extension-version }}"
+        PLATFORM="${{ inputs.platform }}"
+        PACKAGE_TYPE="${{ inputs.package-type }}"
+
+        echo "Building $PACKAGE_TYPE extension package..."
+
+        # Build the extension package
+        npm run build:prod
+
+        rm -rf binaries
+
+        # Create the VSIX package with appropriate naming
+        if [[ "$PACKAGE_TYPE" == "platform-specific" ]]; then
+          platform_name=$(echo $PLATFORM | sed 's/-/_/g')
+          PACKAGE_NAME="haystack-search-${EXTENSION_VERSION}-${platform_name}.vsix"
+        else
+          PACKAGE_NAME="haystack-search-${EXTENSION_VERSION}-all-platforms.vsix"
+        fi
+
+        npx vsce package --no-dependencies -o "$PACKAGE_NAME"
+
+        echo "Package created: $PACKAGE_NAME"
+        echo "package-name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
+      shell: bash

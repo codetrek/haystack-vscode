@@ -45,8 +45,66 @@ jobs:
             echo "should_release=true" >> $GITHUB_OUTPUT
           fi
 
-  build-extension:
+  download-binaries:
     needs: prepare
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify access to Haystack repository
+        run: |
+          echo "Checking access to ai-microsoft/haystack repository..."
+          gh repo view ai-microsoft/haystack --json name,visibility
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Download all Haystack binaries
+        run: |
+          HAYSTACK_VERSION=${{ needs.prepare.outputs.haystackVersion }}
+
+          echo "Downloading all Haystack binaries for version: v${HAYSTACK_VERSION}"
+
+          # Check if the release exists first
+          if ! gh release view "v${HAYSTACK_VERSION}" --repo "ai-microsoft/haystack" >/dev/null 2>&1; then
+            echo "Error: Release v${HAYSTACK_VERSION} not found in ai-microsoft/haystack"
+            exit 1
+          fi
+
+          # Create directory
+          mkdir -p binaries
+
+          # Download all platform binaries
+          for PLATFORM in darwin-amd64 darwin-arm64 linux-amd64 linux-arm64 windows-amd64 windows-arm64; do
+            FILENAME="haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip"
+            echo "Downloading: $FILENAME"
+            
+            gh release download "v${HAYSTACK_VERSION}" \
+              --repo "ai-microsoft/haystack" \
+              --pattern "$FILENAME" \
+              --dir "binaries"
+            
+            # Verify the file was downloaded
+            if [[ ! -f "binaries/$FILENAME" ]]; then
+              echo "Error: Failed to download $FILENAME"
+              exit 1
+            fi
+          done
+
+          echo "All binaries downloaded successfully:"
+          ls -la binaries/
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload binaries as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: haystack-binaries
+          path: binaries/
+          retention-days: 1
+
+  build-platform-specific:
+    needs: [prepare, download-binaries]
     if: needs.prepare.outputs.should_release == 'true'
     strategy:
       matrix:
@@ -56,53 +114,52 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
+      - name: Setup build environment
+        uses: ./.github/actions/setup-build-env
+
+      - name: Build platform-specific extension
+        id: build-platform
+        uses: ./.github/actions/build-extension
         with:
-          node-version: '18'
-          cache: 'npm'
+          extension-version: ${{ needs.prepare.outputs.version }}
+          platform: ${{ matrix.platform }}
+          package-type: platform-specific
+          haystack-version: ${{ needs.prepare.outputs.haystackVersion }}
 
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Create pkgs directory
-        run: mkdir -p pkgs
-
-      - name: Download Haystack binary
-        run: |
-          HAYSTACK_VERSION=${{ needs.prepare.outputs.haystackVersion }}
-          PLATFORM=${{ matrix.platform }}
-          DOWNLOAD_URL="https://github.com/ai-microsoft/haystack/releases/download/v${HAYSTACK_VERSION}/haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip"
-
-          echo "Downloading Haystack binary from $DOWNLOAD_URL"
-          curl -L -o "pkgs/haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip" "$DOWNLOAD_URL"
-
-      - name: Build extension package
-        run: |
-          # Only include the specific platform's binary
-          HAYSTACK_VERSION=${{ needs.prepare.outputs.haystackVersion }}
-          PLATFORM=${{ matrix.platform }}
-          EXTENSION_VERSION=${{ needs.prepare.outputs.version }}
-
-          # Build the extension with only the platform-specific binary
-          find pkgs -type f -not -name "haystack-${PLATFORM}-v${HAYSTACK_VERSION}.zip" -delete
-
-          # Build the extension package
-          npm run build:prod
-
-          # Rename the output file to include platform
-          platform_name=$(echo $PLATFORM | sed 's/-/_/g')
-          npx vsce package --no-dependencies -o "haystack-search-${EXTENSION_VERSION}-${platform_name}.vsix"
-
-      - name: Upload VSIX as artifact
+      - name: Upload platform-specific VSIX as artifact
         uses: actions/upload-artifact@v4
         with:
           name: vsix-${{ matrix.platform }}
-          path: '*.vsix'
+          path: ${{ steps.build-platform.outputs.package-name }}
+          retention-days: 1
+
+  build-all-in-one:
+    needs: [prepare, download-binaries]
+    if: needs.prepare.outputs.should_release == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup build environment
+        uses: ./.github/actions/setup-build-env
+
+      - name: Build all-in-one extension
+        id: build-all-in-one
+        uses: ./.github/actions/build-extension
+        with:
+          extension-version: ${{ needs.prepare.outputs.version }}
+          package-type: all-in-one
+          haystack-version: ${{ needs.prepare.outputs.haystackVersion }}
+
+      - name: Upload all-in-one VSIX as artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: vsix-all-in-one
+          path: ${{ steps.build-all-in-one.outputs.package-name }}
           retention-days: 1
 
   create-release:
-    needs: [prepare, build-extension]
+    needs: [prepare, build-platform-specific, build-all-in-one]
     if: needs.prepare.outputs.should_release == 'true'
     runs-on: ubuntu-latest
     steps:
@@ -148,13 +205,16 @@ jobs:
           CURRENT_VERSION="v${{ needs.prepare.outputs.version }}"
           PREV_VERSION="${{ steps.prev-version.outputs.prev_version }}"
 
+          # Get the repository name from GitHub context
+          REPO_NAME="${{ github.repository }}"
+
           cat > release_notes.md << EOF
           ## What's Changed
 
           ${{ env.CHANGELOG }}
 
           ## Full Changelog
-          [$PREV_VERSION...$CURRENT_VERSION](https://github.com/ai-microsoft/haystack-vscode/compare/$PREV_VERSION...$CURRENT_VERSION)
+          [$PREV_VERSION...$CURRENT_VERSION](https://github.com/${REPO_NAME}/compare/$PREV_VERSION...$CURRENT_VERSION)
           EOF
 
       - name: Create and upload to GitHub Release
