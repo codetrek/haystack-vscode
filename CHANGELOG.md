@@ -1,7 +1,11 @@
 # Changelog
 
-## [next]
+## [1.2.1]
 - Optimize UI: change fonts, narrow paddings, more space for contents, fix loading state
+- Upgrade haystack core to 1.4.1
+  - Optimize wildcard search(e.g.: `microsoft*bookmark`), up to 5X+ speed up for cases.
+  - Bugfix: active & open files should be search first
+  - Optimize: dedup keywords with prefix
 
 ## [1.2.0]
 
