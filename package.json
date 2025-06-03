@@ -190,12 +190,6 @@
           "command": "haystack.openSettings",
           "when": "view == haystackSearch",
           "group": "navigation@3"
-        },
-        {
-          "command": "haystack.searchFunctionSymbols",
-          "when": "view == haystackSearch",
-          "group": "navigation@4",
-          "icon": "$(symbol-function)"
         }
       ]
     }
