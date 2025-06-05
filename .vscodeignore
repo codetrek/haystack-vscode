@@ -32,6 +32,8 @@ coverage/**
 # Compiler generated files
 **/*.map
 **/*.js.map
+binaries/**
+!pkgs/**
 
 # Development documentation
 docs/**

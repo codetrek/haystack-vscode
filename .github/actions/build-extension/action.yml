@@ -60,8 +60,6 @@ runs:
         # Build the extension package
         npm run build:prod
 
-        rm -rf binaries
-
         # Create the VSIX package with appropriate naming
         if [[ "$PACKAGE_TYPE" == "platform-specific" ]]; then
           platform_name=$(echo $PLATFORM | sed 's/-/_/g')
