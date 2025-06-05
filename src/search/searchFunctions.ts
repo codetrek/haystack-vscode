@@ -1,19 +1,17 @@
-import * as vscode from 'vscode'
-import * as path from 'path'
-import { HaystackProvider } from '../core/HaystackProvider'
+import * as vscode from 'vscode';
+import * as path from 'path';
+import { HaystackProvider } from '../core/HaystackProvider';
 
 interface SymbolQuickPickItem extends vscode.QuickPickItem {
-  symbolName: string
-  filePath: string
-  line: number
-  workspaceRoot?: string
+  symbolName: string;
+  filePath: string;
+  line: number;
+  workspaceRoot?: string;
 }
 
 export function createFunctionsQuickPick(): vscode.QuickPick<vscode.QuickPickItem> {
-  const quickPick = vscode.window.createQuickPick()
-  quickPick.ignoreFocusOut = true
-
-  return quickPick
+  const quickPick = vscode.window.createQuickPick();
+  return quickPick;
 }
 
 /**
@@ -22,21 +20,20 @@ export function createFunctionsQuickPick(): vscode.QuickPick<vscode.QuickPickIte
 export function createFunctionSymbolsQuickPick(
   haystackProvider: HaystackProvider,
 ): vscode.QuickPick<SymbolQuickPickItem> {
-  const quickPick = vscode.window.createQuickPick<SymbolQuickPickItem>()
-  quickPick.placeholder = 'Search for function symbols...'
-  quickPick.ignoreFocusOut = true
+  const quickPick = vscode.window.createQuickPick<SymbolQuickPickItem>();
+  quickPick.placeholder = 'Search for function symbols...';
 
   // Get current active workspace folder
-  let activeWorkspaceRoot: string | undefined
+  let activeWorkspaceRoot: string | undefined;
   if (
     vscode.window.activeTextEditor &&
     vscode.window.activeTextEditor.document.uri.scheme === 'file'
   ) {
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(
       vscode.window.activeTextEditor.document.uri,
-    )
+    );
     if (workspaceFolder) {
-      activeWorkspaceRoot = workspaceFolder.uri.fsPath
+      activeWorkspaceRoot = workspaceFolder.uri.fsPath;
     }
   }
 
@@ -45,11 +42,11 @@ export function createFunctionSymbolsQuickPick(
     vscode.workspace.workspaceFolders &&
     vscode.workspace.workspaceFolders.length > 0
   ) {
-    activeWorkspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath
+    activeWorkspaceRoot = vscode.workspace.workspaceFolders[0].uri.fsPath;
   }
 
   // Handle input changes with debounce
-  let debounceTimeout: NodeJS.Timeout | undefined
+  let debounceTimeout: NodeJS.Timeout | undefined;
   quickPick.onDidChangeValue((query) => {
     if (!activeWorkspaceRoot) {
       quickPick.items = [
@@ -60,8 +57,8 @@ export function createFunctionSymbolsQuickPick(
           filePath: '',
           line: 0,
         } as SymbolQuickPickItem,
-      ]
-      return
+      ];
+      return;
     }
 
     if (query.length < 2) {
@@ -73,37 +70,37 @@ export function createFunctionSymbolsQuickPick(
           filePath: '',
           line: 0,
         } as SymbolQuickPickItem,
-      ]
-      return
+      ];
+      return;
     }
 
     // Clear previous timeout
     if (debounceTimeout) {
-      clearTimeout(debounceTimeout)
+      clearTimeout(debounceTimeout);
     }
 
     // Set busy indicator
-    quickPick.busy = true
+    quickPick.busy = true;
     // Debounce the input
     debounceTimeout = setTimeout(async () => {
       try {
         // Show status message indicating search is in progress
-        showStatusMessage(`$(search~spin) Searching for symbols: ${query}...`)
+        showStatusMessage(`$(search~spin) Searching for symbols: ${query}...`);
 
-        const response = await haystackProvider.searchSymbols(activeWorkspaceRoot!, query)
+        const response = await haystackProvider.searchSymbols(activeWorkspaceRoot!, query);
         if (response.code === 200 && response.data) {
-          const items: SymbolQuickPickItem[] = []
+          const items: SymbolQuickPickItem[] = [];
           for (const symbol of response.data.symbols) {
             for (const file of symbol.files) {
               // Format label with icon based on type of symbol
-              const label = `$(symbol-function) ${symbol.name}`
+              const label = `$(symbol-function) ${symbol.name}`;
 
               // Show file location and line number in the description
-              const fileBaseName = path.basename(file.path)
-              const description = `${fileBaseName}:${file.line}`
+              const fileBaseName = path.basename(file.path);
+              const description = `${fileBaseName}:${file.line}`;
 
               // The detailed path for additional context
-              const detail = file.path
+              const detail = file.path;
               items.push({
                 label,
                 description,
@@ -113,7 +110,7 @@ export function createFunctionSymbolsQuickPick(
                 line: file.line,
                 workspaceRoot: activeWorkspaceRoot,
                 alwaysShow: true,
-              })
+              });
             }
           }
 
@@ -130,11 +127,11 @@ export function createFunctionSymbolsQuickPick(
           });
           */
           if (items.length > 0) {
-            quickPick.items = items
+            quickPick.items = items;
             // Show success status message with count
             showStatusMessage(
               `$(symbol-function) Found ${items.length} symbol${items.length === 1 ? '' : 's'}`,
-            )
+            );
           } else {
             quickPick.items = [
               {
@@ -144,15 +141,15 @@ export function createFunctionSymbolsQuickPick(
                 filePath: '',
                 line: 0,
               } as SymbolQuickPickItem,
-            ]
+            ];
             // Show no results status message
-            showStatusMessage(`$(warning) No symbols found matching "${query}"`)
+            showStatusMessage(`$(warning) No symbols found matching "${query}"`);
           }
         } else {
           // Handle error
-          const errorMessage = response.message || 'Unknown error'
+          const errorMessage = response.message || 'Unknown error';
           // Show error in status bar
-          showStatusMessage(`$(error) API Error: ${errorMessage}`, 5000)
+          showStatusMessage(`$(error) API Error: ${errorMessage}`, 5000);
           quickPick.items = [
             {
               label: `$(error) Error: ${errorMessage}`,
@@ -160,13 +157,13 @@ export function createFunctionSymbolsQuickPick(
               filePath: '',
               line: 0,
             } as SymbolQuickPickItem,
-          ]
+          ];
         }
       } catch (error) {
-        console.error('Error searching symbols:', error)
-        const errorMessage = error instanceof Error ? error.message : 'Unknown error'
+        console.error('Error searching symbols:', error);
+        const errorMessage = error instanceof Error ? error.message : 'Unknown error';
         // Show error status message
-        showStatusMessage(`$(error) Error searching symbols: ${errorMessage}`, 5000)
+        showStatusMessage(`$(error) Error searching symbols: ${errorMessage}`, 5000);
         quickPick.items = [
           {
             label: `$(error) Error: ${errorMessage}`,
@@ -174,44 +171,44 @@ export function createFunctionSymbolsQuickPick(
             filePath: '',
             line: 0,
           } as SymbolQuickPickItem,
-        ]
+        ];
       } finally {
-        quickPick.busy = false
+        quickPick.busy = false;
       }
-    }, 300) // 300ms debounce
-  })
+    }, 300); // 300ms debounce
+  });
 
   // Handle selection
   quickPick.onDidAccept(async () => {
-    const selectedItem = quickPick.selectedItems[0]
+    const selectedItem = quickPick.selectedItems[0];
     if (selectedItem && selectedItem.filePath) {
       try {
         // Open the file
         const fileUri = vscode.Uri.file(
           path.join(selectedItem.workspaceRoot || '', selectedItem.filePath),
-        )
-        const document = await vscode.workspace.openTextDocument(fileUri)
-        const editor = await vscode.window.showTextDocument(document)
+        );
+        const document = await vscode.workspace.openTextDocument(fileUri);
+        const editor = await vscode.window.showTextDocument(document);
         // Jump to position if line available
         if (selectedItem.line > 0) {
-          const position = new vscode.Position(selectedItem.line - 1, 0)
-          editor.selection = new vscode.Selection(position, position)
+          const position = new vscode.Position(selectedItem.line - 1, 0);
+          editor.selection = new vscode.Selection(position, position);
           editor.revealRange(
             new vscode.Range(position, position),
             vscode.TextEditorRevealType.InCenter,
-          )
+          );
         }
       } catch (error) {
         vscode.window.showErrorMessage(
           `Failed to open file: ${error instanceof Error ? error.message : 'Unknown error'}`,
-        )
+        );
       }
     }
 
-    quickPick.hide()
-  })
+    quickPick.hide();
+  });
 
-  return quickPick
+  return quickPick;
 }
 
 /**
@@ -223,12 +220,12 @@ export function showFunctionSymbolsQuickPick(
   haystackProvider: HaystackProvider,
   initialValue?: string,
 ): void {
-  const quickPick = createFunctionSymbolsQuickPick(haystackProvider)
-  quickPick.show()
+  const quickPick = createFunctionSymbolsQuickPick(haystackProvider);
+  quickPick.show();
 
   // Set initial value if provided
   if (initialValue) {
-    quickPick.value = initialValue
+    quickPick.value = initialValue;
   }
 }
 
@@ -236,12 +233,12 @@ export function showFunctionSymbolsQuickPick(
  * Shows a status message with an optional timeout
  */
 function showStatusMessage(message: string, timeout = 3000): void {
-  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100)
-  statusBarItem.text = message
-  statusBarItem.show()
+  const statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+  statusBarItem.text = message;
+  statusBarItem.show();
 
   setTimeout(() => {
-    statusBarItem.hide()
-    statusBarItem.dispose()
-  }, timeout)
+    statusBarItem.hide();
+    statusBarItem.dispose();
+  }, timeout);
 }

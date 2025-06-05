@@ -92,7 +92,7 @@
           "default": true,
           "description": "Use global filters for Haystack search"
         },
-        "haystack.search.symbolParse": {
+        "haystack.search.symbolParse [Experiment]": {
           "type": "boolean",
           "default": false,
           "description": "Parse functions with ctags for Haystack search"
@@ -161,7 +161,11 @@
       },
       {
         "command": "haystack.searchFunctionSymbols",
-        "title": "Search Function Symbols"
+        "title": "Haystack Search Function Symbols"
+      },
+      {
+        "command": "haystack.searchFiles",
+        "title": "Haystack Search Files"
       }
     ],
     "keybindings": [

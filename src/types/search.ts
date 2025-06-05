@@ -143,3 +143,20 @@ export interface SearchSymbolsRequest {
   fuzzy: boolean;
   limit?: SearchLimit;
 }
+
+export interface SearchFilesRequest {
+  workspace: string;
+  query: string;
+  limit?: number;
+}
+
+export interface SearchFilesResult {
+  query: string;
+  results: string[];
+}
+
+export interface SearchFilesResponse {
+  code: number;
+  message: string;
+  data?: SearchFilesResult;
+}

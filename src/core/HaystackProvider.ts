@@ -4,6 +4,7 @@ import {
   CreateWorkspaceRequest,
   SearchContentRequest,
   SearchContentResult,
+  SearchFilesResponse,
   SearchSymbolsResponse,
   UpdateWorkspaceRequest,
 } from '../types/search';
@@ -19,6 +20,7 @@ const DOCUMENT_UPDATE_URL = `${HAYSTACK_API_VERSION}/document/update`;
 const DOCUMENT_DELETE_URL = `${HAYSTACK_API_VERSION}/document/delete`;
 const SEARCH_CONTENT_URL = `${HAYSTACK_API_VERSION}/search/content`;
 const SEARCH_SYMBOLS_URL = `${HAYSTACK_API_VERSION}/search/symbols`;
+const SEARCH_FILES_URL = `${HAYSTACK_API_VERSION}/search/files`;
 
 interface HaystackResponseData {
   code: number;
@@ -942,6 +944,50 @@ export class HaystackProvider {
       return {
         code: 500,
         message: error instanceof Error ? error.message : 'Unknown error occurred',
+      };
+    }
+  }
+
+  /**
+   * Search for files in the workspace
+   */
+  public async searchFiles(
+    workspaceRoot: string,
+    query: string,
+    limit = 100,
+  ): Promise<SearchFilesResponse> {
+    try {
+      // Ensure the Haystack server is running
+      if (!this.haystack || this.haystack.getStatus() !== 'running') {
+        return {
+          code: 503,
+          message: 'Haystack server is not running',
+        };
+      }
+      const requestData = {
+        workspace: workspaceRoot,
+        query,
+        limit,
+      };
+
+      const response = await this.post(SEARCH_FILES_URL, requestData);
+      // Process the response
+      if (response.data) {
+        return {
+          code: response.data.code || 200,
+          message: response.data.message || 'Success',
+          data: response.data.data,
+        };
+      }
+      return {
+        code: response.status || 200,
+        message: response.statusText || 'Unknown error',
+      };
+    } catch (error) {
+      console.error('Failed to search files:', error);
+      return {
+        code: 500,
+        message: error instanceof Error ? error.message : 'Unknown error',
       };
     }
   }

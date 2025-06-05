@@ -3,6 +3,7 @@ import { SearchViewProvider } from './search/SearchViewProvider';
 import { HaystackProvider } from './core/HaystackProvider';
 import { Haystack } from './core/Haystack';
 import { showFunctionSymbolsQuickPick } from './search/searchFunctions';
+import { showFilesSearchQuickPick } from './search/searchFiles';
 
 // Constants
 const isDev = () =>
@@ -130,6 +131,13 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
+      const config = vscode.workspace.getConfiguration('haystack.search');
+      const symbolParse = config.get<boolean>('symbolParse', false);
+      if (!symbolParse) {
+        vscode.window.showErrorMessage('Function symbol search is disabled in settings');
+        return;
+      }
+
       // Get selected text from editor if any
       let initialValue: string | undefined;
       const editor = vscode.window.activeTextEditor;
@@ -152,6 +160,20 @@ export function activate(context: vscode.ExtensionContext) {
       }
     }),
   );
+
+  // Register command to search files
+  context.subscriptions.push(
+    vscode.commands.registerCommand('haystack.searchFiles', () => {
+      if (!haystackProvider) {
+        vscode.window.showErrorMessage('Haystack provider not initialized');
+        return;
+      }
+
+      // Show the QuickPick with initial value if selected
+      showFilesSearchQuickPick(haystackProvider, '');
+    }),
+  );
+
 
   // Register command to start Haystack server
   context.subscriptions.push(

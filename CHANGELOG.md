@@ -7,6 +7,10 @@
   - Bugfix: active & open files should be search first
   - Optimize: dedup keywords with prefix
 
+## [1.2.1]
+
+- Added `haystack.searchFiles` command to support fuzzy match for quick file opening
+
 ## [1.2.0]
 
 - Improved the search functionality to index and search across multiple workspace folders and aggregate results.
