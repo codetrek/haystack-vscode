@@ -60,15 +60,51 @@ runs:
         # Build the extension package
         npm run build:prod
 
-        # Create the VSIX package with appropriate naming
+        # Create the VSIX package with appropriate naming and targets
         if [[ "$PACKAGE_TYPE" == "platform-specific" ]]; then
-          platform_name=$(echo $PLATFORM | sed 's/-/_/g')
-          PACKAGE_NAME="haystack-search-${EXTENSION_VERSION}-${platform_name}.vsix"
-        else
-          PACKAGE_NAME="haystack-search-${EXTENSION_VERSION}-all-platforms.vsix"
-        fi
+          # Map binary platform names to vsce target names
+          case "$PLATFORM" in
+            "darwin-amd64")
+              VSCE_TARGET="darwin-x64"
+              ;;
+            "darwin-arm64")
+              VSCE_TARGET="darwin-arm64"
+              ;;
+            "linux-amd64")
+              VSCE_TARGET="linux-x64"
+              ;;
+            "linux-arm64")
+              VSCE_TARGET="linux-arm64"
+              ;;
+            "windows-amd64")
+              VSCE_TARGET="win32-x64"
+              ;;
+            "windows-arm64")
+              VSCE_TARGET="win32-arm64"
+              ;;
+            *)
+              echo "Error: Unknown platform $PLATFORM"
+              exit 1
+              ;;
+          esac
 
-        npx vsce package --no-dependencies -o "$PACKAGE_NAME"
+          echo "Building for platform: $PLATFORM -> vsce target: $VSCE_TARGET"
+          npx vsce package --no-dependencies --target "$VSCE_TARGET"
+          
+          # vsce package --target generates: haystack-search-<target>-<version>.vsix
+          PACKAGE_NAME="haystack-search-${VSCE_TARGET}-${EXTENSION_VERSION}.vsix"
+          
+          if [[ ! -f "$PACKAGE_NAME" ]]; then
+            echo "Error: Expected package file not found: $PACKAGE_NAME"
+            echo "Available files:"
+            ls -la *.vsix || echo "No .vsix files found"
+            exit 1
+          fi
+        else
+          # All-in-one package uses default naming
+          PACKAGE_NAME="haystack-search-${EXTENSION_VERSION}.vsix"
+          npx vsce package --no-dependencies -o "$PACKAGE_NAME"
+        fi
 
         echo "Package created: $PACKAGE_NAME"
         echo "package-name=$PACKAGE_NAME" >> $GITHUB_OUTPUT
