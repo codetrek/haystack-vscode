@@ -1,13 +1,14 @@
-import type { Webview } from 'vscode';
+import type { Disposable, Webview } from 'vscode';
 
 export type MessageTypes = Record<string, unknown>;
 
 type SendClient = Pick<Webview, 'postMessage'>;
-type ReceiveClient =
-  | {
-      addEventListener: (event: 'message', listener: (event: { data: unknown }) => void) => void;
-    }
-  | Pick<Webview, 'onDidReceiveMessage'>;
+type BrowserMessageClient = {
+  addEventListener: (event: 'message', listener: (event: { data: unknown }) => void) => void;
+  removeEventListener: (event: 'message', listener: (event: { data: unknown }) => void) => void;
+};
+
+type ReceiveClient = BrowserMessageClient | Pick<Webview, 'onDidReceiveMessage'>;
 
 export abstract class MessageWrapper<Receive extends MessageTypes, Send extends MessageTypes> {
   constructor(
@@ -21,22 +22,30 @@ export abstract class MessageWrapper<Receive extends MessageTypes, Send extends 
    * - Webview types: {@link ./webview.ts}
    * @param callback The function to call when a message of the specified type is received.
    */
-  on<K extends keyof Receive>(type: K, callback: (data: Receive[K]) => void): void {
+  on<K extends keyof Receive>(type: K, callback: (data: Receive[K]) => void): Disposable {
     if ('onDidReceiveMessage' in this.receiveClient) {
-      this.receiveClient.onDidReceiveMessage((message) => {
+      return this.receiveClient.onDidReceiveMessage((message) => {
         if (message.type === type) {
           callback(message);
         }
       });
-      return;
     } else if ('addEventListener' in this.receiveClient) {
-      this.receiveClient.addEventListener('message', (event) => {
+      const listener = (event: { data: unknown }) => {
         const message = event.data as Receive[K] & { type: K };
         if (message.type === type) {
           callback(message);
         }
-      });
+      };
+      this.receiveClient.addEventListener('message', listener);
+      return {
+        dispose: () => {
+          (this.receiveClient as BrowserMessageClient).removeEventListener('message', listener);
+        },
+      };
     }
+    return {
+      dispose: () => {},
+    };
   }
 
   /**

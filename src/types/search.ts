@@ -1,4 +1,4 @@
-import * as vscode from 'vscode';
+import type { Uri, Range } from 'vscode';
 
 export interface TextSearchOptions {
   includePattern?: { [key: string]: boolean };
@@ -9,11 +9,11 @@ export interface TextSearchOptions {
 }
 
 export interface TextSearchResult {
-  uri: vscode.Uri;
-  range: vscode.Range;
+  uri: Uri;
+  range: Range;
   preview: {
     text: string;
-    matches: vscode.Range[];
+    matches: Range[];
   };
 }
 

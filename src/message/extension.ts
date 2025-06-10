@@ -2,11 +2,6 @@ import { MessageWrapper } from './common';
 import type { WebviewMessageTypes } from './webview';
 import type { SearchMessage } from '../types/search';
 
-export class ExtensionMessagePipeline extends MessageWrapper<
-  ExtensionMessageTypes,
-  WebviewMessageTypes
-> {}
-
 // define the types for extension can receive messages
 // key: message type
 // value: data type for the message
@@ -26,3 +21,8 @@ export type ExtensionMessageTypes = {
   };
   domLoaded: never;
 };
+
+export class ExtensionMessagePipeline extends MessageWrapper<
+  ExtensionMessageTypes,
+  WebviewMessageTypes
+> {}

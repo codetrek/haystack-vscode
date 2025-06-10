@@ -10,10 +10,7 @@ export function escapeHTML(str: string) {
 
 // Helper function to normalize workspace root paths for grouping
 // Converts to lowercase, normalizes path separators, and removes trailing slashes for consistent keying.
-export function normalizeWorkspaceRootForKey(path: string | undefined) {
-  if (!path) {
-    return '';
-  }
+export function normalizePath(path: string) {
   return path
     .toLowerCase()
     .replace(/\\/g, '/') // Replace backslashes with forward slashes

@@ -19,7 +19,6 @@
       "@/*": ["./src/*"]
     }
   },
-  "references": [{ "path": "./src/webview" }],
   "include": ["src/**/*.ts"],
-  "exclude": ["node_modules", "**/*.spec.ts", ".vscode-test"]
+  "exclude": ["node_modules", "**/*.spec.ts", ".vscode-test", "src/webview/**/*"]
 }

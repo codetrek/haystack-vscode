@@ -12,7 +12,6 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
   private readonly _searchHandlers: SearchHandlers;
   private _statusBarItem: vscode.StatusBarItem;
   private _statusUpdateInterval: NodeJS.Timeout | null = null;
-  private readonly _isHaystackSupported: boolean;
   private _pendingSearchText?: string;
   private _extensionUri!: vscode.Uri;
   private _msgPipeline?: ExtensionMessagePipeline;
@@ -20,12 +19,11 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
   constructor(
     private readonly _extensionContext: vscode.ExtensionContext,
     private readonly _haystackProvider: HaystackProvider,
-    isHaystackSupported: boolean,
+    private readonly _isHaystackSupported: boolean,
   ) {
     this._extensionUri = _extensionContext.extensionUri;
     this._searchHandlers = new SearchHandlers(_haystackProvider);
     this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
-    this._isHaystackSupported = isHaystackSupported;
     // Start status updates immediately when the provider is created
     this.startStatusUpdates();
 
@@ -67,11 +65,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
 
     // Set HTML content only if it hasn't been set before
     if (!webviewView.webview.html) {
-      webviewView.webview.html = getSearchTemplate(
-        this._extensionContext,
-        webviewView.webview,
-        this._isHaystackSupported,
-      );
+      webviewView.webview.html = getSearchTemplate(this._extensionContext, webviewView.webview);
     }
 
     // Handle messages from the webview
@@ -98,6 +92,9 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
     this._msgPipeline.on('domLoaded', () => {
       console.log('Search view DOM loaded');
       this._searchHandlers.handleDomLoaded();
+      this._msgPipeline?.post('isPlatformSupported', {
+        supported: this._isHaystackSupported,
+      });
     });
 
     // Clean up when the view is disposed
@@ -136,8 +133,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
     }
 
     // Send a message to the webview to update the search input
-    await this._view.webview.postMessage({
-      type: 'setSearchText',
+    await this._msgPipeline!.post('setSearchText', {
       text,
     });
 

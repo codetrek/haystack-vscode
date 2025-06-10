@@ -11,15 +11,9 @@
 import eslint from '@eslint/js';
 import tseslint from 'typescript-eslint';
 import prettierConfig from 'eslint-config-prettier';
+import reactHooks from 'eslint-plugin-react-hooks';
 
-export default tseslint.config(
-  // Use ESLint recommended base rules
-  eslint.configs.recommended,
-
-  // Use TypeScript ESLint recommended rules
-  ...tseslint.configs.recommended,
-
-  // Common configurations for all files
+export default [
   {
     ignores: [
       '**/node_modules/**',
@@ -29,7 +23,20 @@ export default tseslint.config(
       '**/.vscode-test/**',
       '**/.git/**',
       '**/coverage/**',
+      'webpack/**',
+      'src/vscode.d.ts',
     ],
+  },
+  reactHooks.configs['recommended-latest'],
+  // Use ESLint recommended base rules
+  eslint.configs.recommended,
+
+  // Use TypeScript ESLint recommended rules
+  ...tseslint.configs.recommended,
+
+  // Common configurations for all files
+  {
+    files: ['src/**/*.{js,ts,tsx,mjs,cjs}'],
     languageOptions: {
       ecmaVersion: 2022,
       sourceType: 'module',
@@ -38,7 +45,7 @@ export default tseslint.config(
 
   // VS Code extension project shared rules configuration for JavaScript files
   {
-    files: ['**/*.js', '**/*.mjs', '**/*.cjs'],
+    files: ['src/**/*.{js,ts,tsx,mjs,cjs}'],
     rules: {
       // Style rules
       semi: ['error', 'never'],
@@ -76,12 +83,13 @@ export default tseslint.config(
 
   // TypeScript files project custom rules
   {
-    files: ['**/*.ts', '**/*.tsx'],
+    files: ['src/**/*.{ts,tsx}'],
 
     // TypeScript parser options
     languageOptions: {
       parserOptions: {
-        project: './tsconfig.eslint.json',
+        project: ['./tsconfig.json', './src/webview/tsconfig.json'],
+        tsconfigRootDir: import.meta.dirname,
       },
     },
 
@@ -100,17 +108,6 @@ export default tseslint.config(
       'no-multiple-empty-lines': ['error', { max: 1, maxEOF: 0 }],
       'space-before-blocks': ['error', 'always'],
       'keyword-spacing': ['error', { before: true, after: true }],
-
-      // Import rules
-      'sort-imports': [
-        'error',
-        {
-          ignoreCase: false,
-          ignoreDeclarationSort: true,
-          ignoreMemberSort: false,
-          memberSyntaxSortOrder: ['none', 'all', 'multiple', 'single'],
-        },
-      ],
 
       // VS Code specific rules
       'no-console': 'off',
@@ -155,7 +152,7 @@ export default tseslint.config(
       '@typescript-eslint/no-empty-interface': 'off',
       '@typescript-eslint/no-empty-object-type': 'off',
       '@typescript-eslint/no-inferrable-types': 'error',
-
+      '@typescript-eslint/ban-ts-comment': 'off',
       // Best practices
       eqeqeq: ['error', 'always', { null: 'ignore' }],
       'no-var': 'error',
@@ -168,14 +165,5 @@ export default tseslint.config(
       'require-await': 'error',
     },
   },
-
-  // Special rules for webpack configuration files
-  {
-    files: ['**/webpack/*.js'],
-    rules: {
-      '@typescript-eslint/no-var-requires': 'off',
-      semi: ['error', 'never'],
-    },
-  },
   prettierConfig,
-);
+];

@@ -33,6 +33,7 @@ body {
   border-radius: 2px;
   font-size: 13px;
   line-height: 18px;
+  padding-right: 68px;
 }
 
 .search-input:focus {
@@ -245,6 +246,15 @@ body {
   overflow: hidden;
   text-overflow: ellipsis;
   margin-right: 8px; /* Add some space before the file count */
+}
+
+.workspace-header-left {
+  display: flex;
+  align-items: center;
+  flex-grow: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 .workspace-match-count {
