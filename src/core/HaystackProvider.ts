@@ -310,11 +310,13 @@ export class HaystackProvider {
     query: string,
     options: {
       workspaceRoot?: string; // Added workspace root parameter
+      path?: string;
       caseSensitive?: boolean;
       include?: string;
       exclude?: string;
       maxResults?: number;
       maxResultsPerFile?: number;
+      beforeAfter?: number;
     },
     onResult: (result: SearchContentResult, isDone: boolean) => Promise<void>,
     abortSignal?: AbortSignal,
@@ -342,6 +344,7 @@ export class HaystackProvider {
       },
       case_sensitive: options.caseSensitive,
       filters: {
+        path: options.path,
         include: options.include,
         exclude: options.exclude,
       },
@@ -349,6 +352,7 @@ export class HaystackProvider {
         max_results: options.maxResults,
         max_results_per_file: options.maxResultsPerFile,
       },
+      before_after: options.beforeAfter,
     };
 
     try {

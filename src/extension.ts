@@ -4,6 +4,8 @@ import { HaystackProvider } from './core/HaystackProvider';
 import { Haystack } from './core/Haystack';
 import { showFunctionSymbolsQuickPick } from './search/searchFunctions';
 import { showFilesSearchQuickPick } from './search/searchFiles';
+import { HaystackSearchTool } from './lm-tools/HaystackSearch';
+import { HaystackFilesTool } from './lm-tools/HaystackFiles';
 
 // Constants
 const isDev = () =>
@@ -174,7 +176,6 @@ export function activate(context: vscode.ExtensionContext) {
     }),
   );
 
-
   // Register command to start Haystack server
   context.subscriptions.push(
     vscode.commands.registerCommand('haystack.startServer', async () => {
@@ -281,6 +282,11 @@ export function activate(context: vscode.ExtensionContext) {
       haystack = undefined;
     },
   });
+
+  context.subscriptions.push(
+    vscode.lm.registerTool('haystack_search', new HaystackSearchTool(haystackProvider)),
+    vscode.lm.registerTool('haystack_files', new HaystackFilesTool(haystackProvider)),
+  );
 }
 
 export function deactivate() {

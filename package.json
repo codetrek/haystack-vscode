@@ -196,7 +196,79 @@
           "group": "navigation@3"
         }
       ]
-    }
+    },
+    "languageModelTools": [
+      {
+        "name": "haystack_search",
+        "displayName": "Search Content",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "haystack_search",
+        "modelDescription": "Search for code in current workspace, supports prefix matching and logical operators to help you find exactly what you're looking for in your codebase.",
+        "userDescription": "Search for code in current workspace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query. Supports the following syntax features:\n- Basic terms: single words like 'function'\n- Prefix matching: 'func*' matches 'function', 'functional', etc. (wildcard only at end of term)\n- Exact matching for quoted phrases: '\"Second third\"' matches 'preSecond thirdSuf' but not 'preSecond and thirdSuf'\n- Logical operators: 'AND' (or space) for conjunction, '|' for OR operator\n- Examples: 'error AND handle', 'create | update', 'init*'"
+            },
+            "workspace": {
+              "type": "string",
+              "description": "The workspace to search in, normally it's the absolute path to the project directory, e.g. /home/user/projects/project1. Please always passing current workspace path."
+            },
+            "path": {
+              "type": "string",
+              "description": "The path to search in, related to workspace, e.g. src/core"
+            },
+            "filter": {
+              "type": "string",
+              "description": "Filter the search results by file path. The filter supports glob patterns, separated by comma(','), e.g. 'src/**/*.go,*.cc' to search only in Go files in the src directory or *.cc files in all directory."
+            },
+            "exclude": {
+              "type": "string",
+              "description": "Exclude files from the search. The exclude filter supports glob patterns, separated by comma, e.g. 'test/**/*.go' to exclude all Go test files."
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Maximum number of results to return. The search will stop once this limit is reached, which can improve performance for large codebases."
+            }
+          },
+          "required": [
+            "query",
+            "workspace"
+          ]
+        }
+      },
+      {
+        "name": "haystack_files",
+        "displayName": "Search Files",
+        "canBeReferencedInPrompt": true,
+        "toolReferenceName": "haystack_search",
+        "modelDescription": "Search files (for filename or path) in current workspace, supports fuzzy matching on filenames and attempts to return a list of the most relevant files",
+        "userDescription": "Search files in current workspace.",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "query": {
+              "type": "string",
+              "description": "The search query (for filename / path) which is case-insensitive. Fuzzy match\ne.g. query 'savedtabgroup' will match 'saved_tab_group', 'src/**/saved/tabgroup'"
+            },
+            "workspace": {
+              "type": "string",
+              "description": "The workspace to search in, normally it's the absolute path to the project directory, e.g. /home/user/projects/project1. Please always passing current workspace path."
+            },
+            "limit": {
+              "type": "integer",
+              "description": "Maximum number of results to return."
+            }
+          },
+          "required": [
+            "query",
+            "workspace"
+          ]
+        }
+      }
+    ]
   },
   "dependencies": {
     "@types/adm-zip": "^0.5.7",

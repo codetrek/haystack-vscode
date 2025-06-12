@@ -40,6 +40,7 @@ export interface SearchContentRequest {
   case_sensitive?: boolean;
   filters?: SearchFilters;
   limit?: SearchLimit;
+  before_after?: number;
 }
 
 export interface SearchContentLine {
