@@ -1,9 +1,9 @@
 import React from 'react';
-import { resetResult, setSearchLoading, hasResults } from '../../store/result';
 import { useSearch, useSearchInputFocus, useCancelSearch } from './hooks';
 import { SearchTermInput } from './SearchTermInput';
+import { usePipeMsg } from '../../msgPipe/msgPipe';
+import { resetResult } from '../../store/result';
 import { SearchOptions } from './SearchOptions';
-import { usePipeMsg } from '../../msgPipe';
 import { state } from './state';
 
 export const SearchControlPanel: React.FC = () => {
@@ -16,16 +16,13 @@ export const SearchControlPanel: React.FC = () => {
   usePipeMsg('visibilityChanged', (message) => {
     if (message.isVisible) {
       focusSearchInput();
-      if (!hasResults()) {
-        doSearch();
-      }
+      doSearch(true);
     }
   });
   usePipeMsg('setSearchText', (message) => {
     state.searchTerm = message.text;
     // extension side has started a search, so we set loading state
     focusSearchInput();
-    setSearchLoading();
   });
 
   const onClearSearch = () => {

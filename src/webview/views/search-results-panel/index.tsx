@@ -1,19 +1,12 @@
 import React from 'react';
-import { useSnapshot } from 'valtio';
+import { hasResults, isError, isIdle, isLoading, StructuredResult } from '../../store/result';
 import { WorkspaceGroup, type WorkspaceFileLineClickInfo } from './WorkspaceGroup';
-import {
-  hasResults,
-  isError,
-  isIdle,
-  isLoading,
-  result,
-  StructuredResult,
-} from '../../store/result';
-import { useMsgPipe } from '../../msgPipe';
+import { useResult } from '../../store/hooks';
+import { useMsgPipe } from '../../msgPipe/msgPipe';
 import { Summary } from './Summary';
 
 export const SearchResultsPanel: React.FC = () => {
-  const { results, errorMessage } = useSnapshot(result);
+  const { results, errorMessage } = useResult();
   const msgPipe = useMsgPipe();
   const handleFileLineClick = React.useCallback(
     ({ workspace, ...rest }: WorkspaceFileLineClickInfo) => {

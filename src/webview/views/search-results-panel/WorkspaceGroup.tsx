@@ -50,10 +50,10 @@ export const WorkspaceGroup: React.FC<WorkspaceGroupProps> = ({
         <span className="workspace-match-count">{count}</span>
       </div>
       <div className={`workspace-results ${isCollapsed ? 'collapsed' : ''}`}>
-        {Object.entries(files).map(([filePath, fileData]) => (
+        {Object.entries(files).map(([key, fileData]) => (
           <FileGroup
-            key={filePath}
-            filePath={filePath}
+            key={key}
+            filePath={fileData.filePath}
             count={fileData.count}
             matches={fileData.results}
             truncated={fileData.truncated || false}

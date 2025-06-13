@@ -1,49 +1,38 @@
 import React, { useCallback, useEffect } from 'react';
-import { useSendPipeMsg } from '../../msgPipe';
-import { isLoading, setSearchLoading } from '../../store/result';
+import { useSendPipeMsg } from '../../msgPipe/msgPipe';
+import { doSearch, cancelSearch } from '../../msgPipe/sender';
 import { state } from './state';
 
 // This file contains hooks for the search control panel in the webview
 
 export const useSearch = () => {
   const sendPipeMsg = useSendPipeMsg();
-  return useCallback(() => {
-    if (isLoading()) {
-      return;
-    }
-    if (state.searchTerm.trim() === '') {
-      return;
-    }
-    setSearchLoading();
-    const options = {
-      caseSensitive: state.caseSensitive,
-      ...(state.showOptions
-        ? {
-            include: state.includeFiles,
-            exclude: state.excludeFiles,
-          }
-        : {
-            include: '',
-            exclude: '',
-          }),
-    };
-    sendPipeMsg('search', {
-      query: state.searchTerm,
-      options,
-    });
-  }, [sendPipeMsg]);
+  return useCallback(
+    (noResults = false) => {
+      if (state.searchTerm.trim() === '') {
+        return;
+      }
+      const options = {
+        caseSensitive: state.caseSensitive,
+        ...(state.showOptions
+          ? {
+              include: state.includeFiles,
+              exclude: state.excludeFiles,
+            }
+          : {
+              include: '',
+              exclude: '',
+            }),
+      };
+      doSearch(sendPipeMsg, state.searchTerm, options, noResults);
+    },
+    [sendPipeMsg],
+  );
 };
 
 export const useCancelSearch = () => {
   const sendPipeMsg = useSendPipeMsg();
-  return useCallback(() => {
-    if (!isLoading()) {
-      return;
-    }
-    // we should set cancelled state after we receive the searchCancelled message
-    // setSearchCancelled();
-    sendPipeMsg('cancelSearch');
-  }, [sendPipeMsg]);
+  return useCallback(() => cancelSearch(sendPipeMsg), [sendPipeMsg]);
 };
 
 // A hook to manage the focus of the search input

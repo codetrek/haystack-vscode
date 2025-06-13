@@ -39,7 +39,7 @@
     "build:prod:wv": "cross-env NODE_ENV=production webpack --config ./webpack/webview.config.js",
     "build:prod": "npm run clean && npm run build:prod:ext && npm run build:prod:wv",
     "build:dev": "npm run clean && cross-env NODE_ENV=development webpack --config ./webpack/extension.config.js && webpack --config ./webpack/webview.config.js",
-    "test": "node ./dist/test/runTest.js",
+    "test": "cross-env NODE_ENV=test vscode-test",
     "build": "npm run build:prod && vsce package",
     "publish": "npm run build && vsce publish",
     "clean": "rimraf dist",
@@ -48,7 +48,7 @@
     "lint:fix": "eslint src --fix",
     "format": "prettier --write \"**/*.{js,ts,tsx,json,css,md,mjs,cjs}\"",
     "prepare": "husky install",
-    "pretest": "npm run build:dev && npm run lint"
+    "pretest": "npm run clean && tsc -p tsconfig.test.json && tsc-alias -p tsconfig.test.json"
   },
   "contributes": {
     "viewsContainers": {
@@ -293,6 +293,8 @@
     "@types/vscode": "^1.95.0",
     "@typescript-eslint/eslint-plugin": "^8.29.1",
     "@typescript-eslint/parser": "^8.29.1",
+    "@vscode/test-cli": "^0.0.11",
+    "@vscode/test-electron": "^2.5.2",
     "@vscode/vsce": "^3.3.2",
     "babel-loader": "^10.0.0",
     "cross-env": "^7.0.3",
@@ -310,6 +312,7 @@
     "style-loader": "^4.0.0",
     "terser-webpack-plugin": "^5.3.14",
     "ts-loader": "^9.5.2",
+    "tsc-alias": "^1.8.16",
     "typescript": "^5.8.3",
     "typescript-eslint": "^8.32.1",
     "vscode-test": "^1.6.1",

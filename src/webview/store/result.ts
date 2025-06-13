@@ -1,4 +1,4 @@
-import { proxy } from 'valtio';
+import { proxy, snapshot } from 'valtio';
 import { derive } from 'derive-valtio';
 import type { LineMatch } from '@/types/search';
 import { normalizePath } from '../utils';
@@ -8,8 +8,10 @@ export interface StructuredResult {
   [workspaceRoot: string]: {
     count: number; // Total matches in this workspace
     workspaceName: string;
+    workSpaceRoot: string;
     files: {
       [filePath: string]: {
+        filePath: string;
         count: number; // Matches in this file
         truncated?: boolean; // Whether the results are truncated
         results: LineMatch[]; // Array of results for this file
@@ -25,6 +27,11 @@ export interface SearchResult {
   searchSummary: string;
 }
 
+/**
+ * Most of the time, we should not directly use or update `result`.
+ * Instead, we should use the action methods defined below to modify it,
+ * and consume it using the `useResult` hook.
+ */
 export const result = proxy<SearchResult>({
   status: 'idle',
   results: {},
@@ -32,18 +39,27 @@ export const result = proxy<SearchResult>({
   searchSummary: '',
 });
 
-export const resultCounter = derive({
-  // how many unique files have matches
-  totalFiles: (get) =>
-    Object.values(get(result).results).reduce((count, workspace) => {
-      return count + Object.keys(workspace.files).length;
-    }, 0),
-  // how many total matches across all files
-  matchedLines: (get) =>
-    Object.values(get(result).results).reduce((count, workspace) => {
-      return count + workspace.count;
-    }, 0),
-});
+export const getResultSnpapshot = () => snapshot(result);
+
+export const resultCounter = derive(
+  {
+    // how many unique files have matches
+    totalFiles: (get) =>
+      Object.values(get(result).results).reduce((count, workspace) => {
+        return count + Object.keys(workspace.files).length;
+      }, 0),
+    // how many total matches across all files
+    matchedLines: (get) =>
+      Object.values(get(result).results).reduce((count, workspace) => {
+        return count + workspace.count;
+      }, 0),
+  },
+  {
+    // we need to update the derived state synchronously at test time
+    // but in production, we want it to be async so valtio can batch notify react to re-render
+    sync: process.env.NODE_ENV === 'test',
+  },
+);
 
 export function isLoading() {
   return result.status === 'loading';
@@ -104,11 +120,13 @@ export function setSearchStream(stream: SearchResultStream) {
   // initialize the workspace and file if not exists
   result.results[normalizedWorkSpace] = result.results[normalizedWorkSpace] || {
     workspaceName: stream.workspaceName,
+    workSpaceRoot: stream.workspaceRoot,
     count: 0,
     files: {},
   };
   result.results[normalizedWorkSpace].files[normalizedFile] = result.results[normalizedWorkSpace]
     .files[normalizedFile] || {
+    filePath: stream.result.file,
     count: 0,
     results: [],
   };

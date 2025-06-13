@@ -19,3 +19,4 @@ node_modules/
 /pre-pkgs/
 
 .DS_Store
+.vscode-test/

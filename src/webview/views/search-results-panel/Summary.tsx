@@ -1,9 +1,8 @@
 import React from 'react';
-import { useSnapshot } from 'valtio';
-import { result } from '../../store/result';
+import { useResult } from '../../store/hooks';
 
 export const Summary = () => {
-  const { searchSummary } = useSnapshot(result);
+  const { searchSummary } = useResult();
   return searchSummary ? (
     <div id="search-summary" className="search-summary">
       {searchSummary}
