@@ -1,12 +1,12 @@
 import React from 'react';
-import { hasResults, isError, isIdle, isLoading, StructuredResult } from '../../store/result';
+import { hasResults, StructuredResult } from '../../store/result';
 import { WorkspaceGroup, type WorkspaceFileLineClickInfo } from './WorkspaceGroup';
 import { useResult } from '../../store/hooks';
 import { useMsgPipe } from '../../msgPipe/msgPipe';
 import { Summary } from './Summary';
 
 export const SearchResultsPanel: React.FC = () => {
-  const { results, errorMessage } = useResult();
+  const { results, errorMessage, status } = useResult();
   const msgPipe = useMsgPipe();
   const handleFileLineClick = React.useCallback(
     ({ workspace, ...rest }: WorkspaceFileLineClickInfo) => {
@@ -18,13 +18,13 @@ export const SearchResultsPanel: React.FC = () => {
     [msgPipe],
   );
 
-  if (isIdle()) {
+  if (status === 'idle') {
     return <></>;
   }
-  if (isLoading() && !hasResults()) {
+  if (status === 'loading' && !hasResults()) {
     return <div className="loading-spinner"></div>;
   }
-  if (isError()) {
+  if (status === 'error') {
     return <div className="error-message">{errorMessage}</div>;
   }
 

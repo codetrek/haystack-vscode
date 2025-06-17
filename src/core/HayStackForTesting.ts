@@ -133,6 +133,14 @@ export class HayStackForTesting extends EventEmitter implements IHaystack {
         mockResults = this.getFileFilterTestData(_data);
       } else if (searchQuery.includes('[test:empty-results]')) {
         mockResults = [];
+      } else if (searchQuery.includes('[test:pending-forever]')) {
+        // Test case: Search stays pending forever (never resolves)
+        return new Promise(() => {
+          // This promise never resolves, simulating a pending search
+        });
+      } else if (searchQuery.includes('[test:infinite-stream]')) {
+        // Test case: Search continuously outputs results without finishing
+        return Promise.resolve(this.createInfiniteStream(_data));
       } else {
         // Default test data for general testing
         // 3 files, 3 results
@@ -319,6 +327,49 @@ export class HayStackForTesting extends EventEmitter implements IHaystack {
 
         // Close the stream
         controller.close();
+      },
+    });
+  }
+  private createInfiniteStream(_data: SearchContentRequest): ReadableStream<Uint8Array> {
+    return new ReadableStream<Uint8Array>({
+      start(controller) {
+        const encoder = new TextEncoder();
+        let counter = 0;
+
+        // Send mock results continuously without ever sending done
+        const sendResult = () => {
+          counter++;
+          const mockResult: SearchContentResult = {
+            file: `test/infinite-file-${counter}.ts`,
+            lines: [
+              {
+                line: {
+                  line_number: counter,
+                  content: `Infinite result ${counter} - This is a test line that keeps generating`,
+                  match: [0, 15], // Highlight "Infinite result"
+                },
+                before:
+                  counter > 1
+                    ? [{ line_number: counter - 1, content: `Previous line ${counter - 1}` }]
+                    : undefined,
+                after: [{ line_number: counter + 1, content: `Next line ${counter + 1}` }],
+              },
+            ],
+            truncate: false,
+          };
+
+          const eventData = `event: result\ndata: ${JSON.stringify(mockResult)}\n\n`;
+          controller.enqueue(encoder.encode(eventData));
+
+          // Schedule next result after a delay
+          setTimeout(sendResult, 500); // Send a new result every 500ms
+        };
+
+        // Start sending results
+        sendResult();
+
+        // Note: We never call controller.close() or send done event
+        // This simulates an infinite stream that never completes
       },
     });
   }

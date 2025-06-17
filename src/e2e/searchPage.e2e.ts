@@ -5,6 +5,7 @@ import {
   By,
   VSBrowser,
   InputBox,
+  Key,
 } from 'vscode-extension-tester';
 import { before, after, afterEach } from 'mocha';
 import * as path from 'path';
@@ -155,6 +156,9 @@ describe('Haystack Search Test', function () {
   });
 
   afterEach(async () => {
+    // interrupt any ongoing search
+    const input = await view.findWebElement(By.id('searchInput'));
+    input.sendKeys(Key.ESCAPE);
     // clear search input after each test
     const clearBtn = await view.findWebElements(By.id('clearTextBtn'));
     if (clearBtn.length > 0) {
@@ -201,19 +205,58 @@ describe('Haystack Search Test', function () {
     );
   });
 
-  // it.only('should search result is empty correctly', async function () {
-  //   this.timeout(100000);
-  //   // 1. input & trigger search - using file name test data
-  //   const input = await view.findWebElement(By.id('searchInput'));
-  //   await input.sendKeys('[test:empty-results] Button');
-  //   await input.sendKeys('\n'); // simulate Enter key to trigger search
+  it('should search result is empty correctly', async () => {
+    // 1. input & trigger search - using file name test data
+    const input = await view.findWebElement(By.id('searchInput'));
+    await input.sendKeys('[test:empty-results] Button');
+    await input.sendKeys('\n'); // simulate Enter key to trigger search
 
-  //   // 2. wait for search results to load
-  //   await sleep(200);
-  //   await sleep(100000);
-  //   // 3. verify search result container is rendered
-  //   await verifyRenderResults(view, 0, 0, 0);
-  // });
+    // 2. wait for search results to load
+    await sleep(500);
+    // 3. verify search result container is rendered
+    await verifyRenderResults(view, 0, 0, 0);
+  });
+
+  it('should loading view render correctly', async () => {
+    // 1. input & trigger search - using file name test data
+    const input = await view.findWebElement(By.id('searchInput'));
+    await input.sendKeys('[test:pending-forever] Button');
+    await input.sendKeys('\n'); // simulate Enter key to trigger search
+
+    // 2. wait for search results to load
+    await sleep(500);
+    // 3. verify search result container is rendered
+    assert.ok(
+      await view.findWebElement(By.className('loading-spinner')),
+      'Loading spinner should be visible',
+    );
+  });
+
+  it('should interrupt search correctly', async () => {
+    // 1. input & trigger search - using file name test data
+    const input = await view.findWebElement(By.id('searchInput'));
+    await input.sendKeys('[test:infinite-stream] Button');
+    await input.sendKeys('\n'); // simulate Enter key to trigger search
+
+    // 2. wait for search results to load
+    await sleep(500);
+    // 3. send ESCAPE key to interrupt the search
+    await input.sendKeys(Key.ESCAPE);
+    await sleep(500);
+
+    // 4. verify search result container is rendered
+    // although the search is interrupted, we should still see some results
+    const resultItems = await view.findWebElements(By.className('result-item'));
+    assert.ok(
+      resultItems.length > 0,
+      'Search results should be displayed after interrupting search',
+    );
+    assert.match(
+      await (await view.findWebElement(By.className('search-summary'))).getText(),
+      /cancelled/,
+      'Search summary should be displayed with "cancelled" status',
+    );
+  });
 
   it('should search with case sensitivity work correctly', async () => {
     // 1. input & trigger search - using case-sensitive test data
