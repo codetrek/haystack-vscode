@@ -117,11 +117,6 @@ body {
 
 .search-options {
   padding: 4px 8px;
-  display: none;
-}
-
-.search-options.visible {
-  display: block;
 }
 
 .search-option {

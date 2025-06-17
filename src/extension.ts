@@ -1,11 +1,13 @@
 import * as vscode from 'vscode';
 import { SearchViewProvider } from './search/SearchViewProvider';
 import { HaystackProvider } from './core/HaystackProvider';
+import { IHaystack } from './core/IHaystack';
 import { Haystack } from './core/Haystack';
 import { showFunctionSymbolsQuickPick } from './search/searchFunctions';
 import { showFilesSearchQuickPick } from './search/searchFiles';
 import { HaystackSearchTool } from './lm-tools/HaystackSearch';
 import { HaystackFilesTool } from './lm-tools/HaystackFiles';
+import { HayStackForTesting } from './core/HayStackForTesting';
 
 // Constants
 const isDev = () =>
@@ -16,7 +18,7 @@ const isDev = () =>
 // Global state
 let haystackProvider: HaystackProvider | undefined;
 let searchViewProvider: SearchViewProvider | undefined;
-let haystack: Haystack | undefined;
+let haystack: IHaystack | undefined;
 
 /**
  * This function is called when your extension is activated
@@ -25,9 +27,13 @@ export function activate(context: vscode.ExtensionContext) {
   console.log(`haystack is running in ${isDev() ? 'dev' : 'prod'} mode`);
   // Simple activation logging without version checks
   console.log('Haystack extension activated');
-
-  // Initialize Haystack Core Manager and check installation
-  haystack = new Haystack(context, true);
+  if (process.env.IS_TESTING) {
+    vscode.window.showInformationMessage('Haystack extension is running in testing mode');
+    haystack = new HayStackForTesting();
+  } else {
+    // Initialize Haystack Core Manager and check installation
+    haystack = new Haystack(context, true);
+  }
   console.log(
     `haystack is supported on ${haystack.getCurrentPlatform()}? ${haystack.getIsSupported() ? 'yes' : 'no'}`,
   );

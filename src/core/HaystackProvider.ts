@@ -5,10 +5,11 @@ import {
   SearchContentRequest,
   SearchContentResult,
   SearchFilesResponse,
+  SearchFilesResult,
   SearchSymbolsResponse,
   UpdateWorkspaceRequest,
 } from '../types/search';
-import { Haystack } from './Haystack';
+import { IHaystack } from './IHaystack';
 
 // Haystack API URLs
 const HAYSTACK_API_VERSION = '/api/v1';
@@ -43,9 +44,9 @@ export class HaystackProvider {
   private workspaceRoots: string[] = [];
   private updateTimeouts: Map<string, Map<string, NodeJS.Timeout>> = new Map(); // Map of workspaceRoot -> (relativePath -> timeout)
   private periodicTaskInterval: NodeJS.Timeout | null;
-  private haystack: Haystack;
+  private haystack: IHaystack;
 
-  constructor(haystack: Haystack) {
+  constructor(haystack: IHaystack) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     // Initialize all workspace roots
     this.initWorkspaceRoots(workspaceFolders);
@@ -980,12 +981,12 @@ export class HaystackProvider {
         return {
           code: response.data.code || 200,
           message: response.data.message || 'Success',
-          data: response.data.data,
+          data: response.data.data as SearchFilesResult,
         };
       }
       return {
         code: response.status || 200,
-        message: response.statusText || 'Unknown error',
+        message: 'Unknown error',
       };
     } catch (error) {
       console.error('Failed to search files:', error);

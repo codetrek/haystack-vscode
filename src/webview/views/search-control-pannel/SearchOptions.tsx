@@ -4,8 +4,8 @@ import { state } from './state';
 
 export const SearchOptions: React.FC = () => {
   const snap = useSnapshot(state);
-  return (
-    <div className={`search-options ${snap.showOptions ? 'visible' : ''}`} id="searchOptions">
+  return snap.showOptions ? (
+    <div className="search-options" id="searchOptions">
       <div className="search-option">
         <input
           type="text"
@@ -27,5 +27,5 @@ export const SearchOptions: React.FC = () => {
         />
       </div>
     </div>
-  );
+  ) : null;
 };

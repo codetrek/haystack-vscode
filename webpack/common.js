@@ -26,6 +26,7 @@ module.exports.commonConfig = {
     new webpack.DefinePlugin({
       'process.env.NODE_ENV': JSON.stringify(isProd ? 'production' : 'development'),
       'process.env.IS_PROD': JSON.stringify(isProd),
+      'process.env.IS_TESTING': JSON.stringify(process.env.NODE_ENV === 'test'),
     }),
     ...(isAnalyze ? [new BundleAnalyzerPlugin()] : []),
   ],

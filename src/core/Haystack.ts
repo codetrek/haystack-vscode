@@ -7,6 +7,7 @@ import { EventEmitter } from 'events';
 import https from 'https';
 import http from 'http';
 import AdmZip from 'adm-zip';
+import type { IHaystack, Status, DownloadProgress, InstallStatus } from './IHaystack';
 
 const supportedPlatforms = {
   'linux-amd64': true,
@@ -64,17 +65,6 @@ const isHaystackSupported =
 const HAYSTACK_DOWNLOAD_URL = 'https://github.com/CodeTrek/haystack/releases/download/';
 const HAYSTACK_DOWNLOAD_URL_FALLBACK = 'https://haystack.codetrek.cn/download/';
 
-type Status = 'initializing' | 'starting' | 'running' | 'unsupported' | 'error';
-
-type InstallStatus =
-  | 'initializing'
-  | 'downloading'
-  | 'extracting'
-  | 'unsupported'
-  | 'error'
-  | 'installed'
-  | 'not-installed';
-
 export type HaystackEvent =
   | 'status-change'
   | 'install-status-change'
@@ -83,14 +73,7 @@ export type HaystackEvent =
   | 'error'
   | 'connected';
 
-type DownloadProgress = {
-  url: string;
-  totalSize: number;
-  downloadedSize: number;
-  percent: number;
-};
-
-export class Haystack extends EventEmitter {
+export class Haystack extends EventEmitter implements IHaystack {
   private coreFilePath: string;
   private binDir: string;
   private _status: Status;
@@ -205,11 +188,11 @@ export class Haystack extends EventEmitter {
     return this._connected;
   }
 
-  public isRunningLocally() {
+  private isRunningLocally() {
     return this.runningPort === LOCAL_PORT;
   }
 
-  public getUrl(): string {
+  private getUrl(): string {
     return `http://${getHaystackHost()}:${this.runningPort}`;
   }
 
@@ -232,10 +215,6 @@ export class Haystack extends EventEmitter {
 
   public getRetryCount(): number {
     return this._startRetry;
-  }
-
-  public getDataPath(): string {
-    return path.join(this.context.globalStorageUri.fsPath, 'data');
   }
 
   // Sets the status and emits a status-change event
