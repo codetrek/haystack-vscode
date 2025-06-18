@@ -627,7 +627,9 @@ export class HaystackProvider {
       }
     } catch (error: unknown) {
       const errorMessage = error instanceof Error ? error.message : String(error);
-      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
+      if (
+        ['ECONNREFUSED', 'ENOENT', 'Failed to connect'].some((text) => errorMessage.includes(text))
+      ) {
         console.error("Haystack: Failed to connect to Haystack server. Ensure it's running.");
         return {
           indexing: false,

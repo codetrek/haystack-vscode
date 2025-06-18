@@ -20,12 +20,12 @@ export class HaystackSearchTool implements vscode.LanguageModelTool<HaystackSear
     _cancellationToken: vscode.CancellationToken,
   ): vscode.ProviderResult<vscode.PreparedToolInvocation> {
     const confirmationMessages = {
-      title: 'Haystack Search (File Contents',
+      title: 'Haystack Search (File Contents)',
       message: new vscode.MarkdownString(`Search \`${options.input.query}\` for file contents`),
     };
 
     return {
-      invocationMessage: 'Searching file contents with Haystack',
+      invocationMessage: 'Search file contents with Haystack',
       confirmationMessages,
     };
   }

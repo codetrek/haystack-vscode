@@ -1,13 +1,16 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
+import * as os from 'os';
 import axios from 'axios';
 import { exec } from 'child_process';
 import { EventEmitter } from 'events';
 import https from 'https';
 import http from 'http';
+import { Agent } from 'undici';
 import AdmZip from 'adm-zip';
 import type { IHaystack, Status, DownloadProgress, InstallStatus } from './IHaystack';
+import YAML from 'js-yaml';
 
 const supportedPlatforms = {
   'linux-amd64': true,
@@ -19,19 +22,42 @@ const supportedPlatforms = {
 };
 
 // Haystack ports
-const LOCAL_PORT = 13135;
 const GLOBAL_PORT = 13134;
+const LOCAL_PORT = 13135;
 
 // Haystack config
-const haystackConfig = (context: vscode.ExtensionContext) => `
-global:
-  data_path: ${path.join(context.globalStorageUri.fsPath, 'data')}
-  port: ${LOCAL_PORT}
-client:
-  default_limit:
-    max_results: 500
-    max_results_per_file: 50
-`;
+
+interface HaystackConfig {
+  global: {
+    data_path: string;
+    port: number;
+    socket_path: string;
+  };
+  client: {
+    default_limit: {
+      max_results: number;
+      max_results_per_file: number;
+    };
+  };
+}
+
+const defaultHaystackConfig = (context: vscode.ExtensionContext): HaystackConfig => {
+  const dataPath = path.join(context.globalStorageUri.fsPath, 'data');
+  const useSocket = os.platform() !== 'win32'; // Golang supports but Node.js doesn't...
+  return {
+    global: {
+      data_path: dataPath,
+      port: useSocket ? 0 : LOCAL_PORT,
+      socket_path: useSocket ? path.join(dataPath, 'haystack.sock') : '',
+    },
+    client: {
+      default_limit: {
+        max_results: 500,
+        max_results_per_file: 50,
+      },
+    },
+  };
+};
 
 const platform = () => {
   if (process.platform === 'win32') {
@@ -80,16 +106,20 @@ export class Haystack extends EventEmitter implements IHaystack {
   private _installStatus: InstallStatus;
   private downloadZipPath: string;
   private builtinZipPath: string;
-  private runningPort: number;
   private haystackVersion: string;
+  private haystackConfig: HaystackConfig;
   private HAYSTACK_ZIP_FILE_NAME: string;
   private _downloadProgress: DownloadProgress;
   private _startRetry: number;
   private _connected: boolean;
 
+  private get runningPort(): number {
+    return this.useLocalServer ? this.haystackConfig.global.port : GLOBAL_PORT;
+  }
+
   constructor(
     private context: vscode.ExtensionContext,
-    localServer: boolean,
+    private useLocalServer: boolean,
   ) {
     super();
     // Use globalStorageUri for persistent storage across extension updates
@@ -99,8 +129,8 @@ export class Haystack extends EventEmitter implements IHaystack {
     this.builtinZipPath = path.join(this.context.extensionPath, 'pkgs'); // We may have builtin zip files
     this._status = 'initializing';
     this._installStatus = 'initializing';
-    this.runningPort = localServer ? LOCAL_PORT : GLOBAL_PORT;
     this.haystackVersion = 'v' + context.extension.packageJSON.haystackVersion;
+    this.haystackConfig = defaultHaystackConfig(this.context);
     this.HAYSTACK_ZIP_FILE_NAME = `haystack-${currentPlatform}-${this.haystackVersion}.zip`;
     this._startRetry = 0;
     this._connected = false;
@@ -120,9 +150,11 @@ export class Haystack extends EventEmitter implements IHaystack {
       throw new Error('Haystack is not running');
     }
 
+    console.log(`POST to ${this.getUrl()}${uri} with data:`, data);
+
     try {
       const url = `${this.getUrl()}${uri}`;
-      const response = await axios.post(url, data);
+      const response = await axios.post(url, data, { socketPath: this.getSocketPath() });
       this.connected = true;
       return response;
     } catch (error: unknown) {
@@ -131,7 +163,9 @@ export class Haystack extends EventEmitter implements IHaystack {
           ?.message ||
         (error as { message?: string })?.message ||
         String(error);
-      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
+      if (
+        ['ECONNREFUSED', 'ENOENT', 'Failed to connect'].some((text) => errorMessage.includes(text))
+      ) {
         this.connected = false;
       }
 
@@ -155,6 +189,13 @@ export class Haystack extends EventEmitter implements IHaystack {
           Accept: 'text/event-stream',
         },
         body: JSON.stringify(data),
+        dispatcher: this.getSocketPath()
+          ? new Agent({
+              connect: {
+                socketPath: this.getSocketPath(),
+              },
+            })
+          : undefined,
       });
 
       if (!response.ok) {
@@ -167,7 +208,9 @@ export class Haystack extends EventEmitter implements IHaystack {
       return response.body as ReadableStream<Uint8Array>;
     } catch (error: unknown) {
       const errorMessage = (error as { message?: string })?.message || String(error);
-      if (errorMessage.includes('ECONNREFUSED') || errorMessage.includes('Failed to connect')) {
+      if (
+        ['ECONNREFUSED', 'ENOENT', 'Failed to connect'].some((text) => errorMessage.includes(text))
+      ) {
         this.connected = false;
       }
 
@@ -188,12 +231,20 @@ export class Haystack extends EventEmitter implements IHaystack {
     return this._connected;
   }
 
-  private isRunningLocally() {
-    return this.runningPort === LOCAL_PORT;
+  public isRunningLocally() {
+    return this.useLocalServer;
   }
 
   private getUrl(): string {
     return `http://${getHaystackHost()}:${this.runningPort}`;
+  }
+
+  private getSocketPath(): string | undefined {
+    const socketPath = this.haystackConfig.global.socket_path;
+    if (!socketPath || socketPath === '') {
+      return undefined;
+    }
+    return path.isAbsolute(socketPath) ? socketPath : path.join(os.tmpdir(), socketPath);
   }
 
   public getIsSupported(): boolean {
@@ -310,6 +361,17 @@ export class Haystack extends EventEmitter implements IHaystack {
     console.log(`Install status: ${this.installStatus}, status: ${this.status}`);
 
     if (this.installStatus !== 'installed') {
+      this.status = 'error';
+      return;
+    }
+
+    // Read haystack config
+    try {
+      const configPath = path.join(this.binDir, 'config.yaml');
+      const configContent = await fs.promises.readFile(configPath, 'utf8');
+      this.haystackConfig = YAML.load(configContent) as HaystackConfig;
+    } catch (error) {
+      console.error(`Failed to read Haystack config: ${error}`);
       this.status = 'error';
       return;
     }
@@ -578,7 +640,8 @@ export class Haystack extends EventEmitter implements IHaystack {
     await fs.promises.writeFile(versionFilePath, version);
 
     const confFilePath = path.join(this.binDir, 'config.yaml');
-    await fs.promises.writeFile(confFilePath, haystackConfig(this.context));
+    const configContent = defaultHaystackConfig(this.context);
+    await fs.promises.writeFile(confFilePath, YAML.dump(configContent));
   }
 
   private async checkIsCompatibleVersion(): Promise<void> {
@@ -609,7 +672,7 @@ export class Haystack extends EventEmitter implements IHaystack {
     try {
       const url = `${this.getUrl()}/api/v1/server/stop`;
       console.log('Shutting down Haystack server...');
-      await axios.post(url);
+      await axios.post(url, undefined, { socketPath: this.getSocketPath() });
       await this.waitingForShutdown();
       this.status = 'initializing';
       console.log('Haystack server stopped for upgrade.');
@@ -630,7 +693,7 @@ export class Haystack extends EventEmitter implements IHaystack {
       const url = `${this.getUrl()}/api/v1/server/status`;
       try {
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        await axios.get(url);
+        await axios.get(url, { socketPath: this.getSocketPath() });
       } catch {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         return;
@@ -672,7 +735,7 @@ export class Haystack extends EventEmitter implements IHaystack {
     // Check if Haystack is running
     try {
       const url = `${this.getUrl()}/health`;
-      const response = await axios.get(url);
+      const response = await axios.get(url, { socketPath: this.getSocketPath() });
       if (response.status === 200) {
         return true;
       }
@@ -688,7 +751,19 @@ export class Haystack extends EventEmitter implements IHaystack {
     try {
       const command = `"${this.coreFilePath}" server start`;
       console.log(`Try starting Haystack server '${command}' (retry: ${this._startRetry})...`);
-      exec(command);
+      const child = exec(command);
+      child.stdout?.on('data', (data) => {
+        console.log(`Haystack stdout: ${data}`);
+      });
+      child.stderr?.on('data', (data) => {
+        console.error(`Haystack stderr: ${data}`);
+      });
+      child.on('error', (error) => {
+        console.error(`Haystack start command failed: ${error}`);
+      });
+      child.on('exit', (code) => {
+        console.error(`Haystack start command exited with code: ${code}`);
+      });
       console.log('Haystack start command executed successfully');
       return true;
     } catch (error) {

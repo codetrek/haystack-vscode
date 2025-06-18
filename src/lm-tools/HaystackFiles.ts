@@ -22,7 +22,7 @@ export class HaystackFilesTool implements vscode.LanguageModelTool<HaystackFiles
     };
 
     return {
-      invocationMessage: 'Searching file paths with Haystack',
+      invocationMessage: 'Search file paths with Haystack',
       confirmationMessages,
     };
   }
