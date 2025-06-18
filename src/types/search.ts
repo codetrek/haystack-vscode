@@ -113,7 +113,6 @@ export interface CreateWorkspaceRequest {
 export interface UpdateWorkspaceRequest {
   workspace: string;
   use_global_filters: boolean;
-  symbol_parse: boolean;
   filters?: Filters;
 }
 

@@ -1,14 +1,26 @@
 # Changelog
 
+## [1.3.0]
+
+- Feat: Enable function search by default
+- Feat: Enable file search by default
+- Upgrade haystack core to 1.5.1
+  - Breaking change: Upgrade storage version to 1.3
+  - Bugfix: Path filter with "\" seperate returns no result.
+  - Optimize: Output search result in a single text block to improve GHC performance
+  - Feat: Support Unix domain socket for Non-Windows platform
+  - Feat: CTags based function parse and search
+- Integrate with Github using Language Model Tool API
+- Using domain socket to communicate with haystack core on Non-windows
+- Refactor using React
+
 ## [1.2.1]
+
 - Optimize UI: change fonts, narrow paddings, more space for contents, fix loading state
 - Upgrade haystack core to 1.4.1
   - Optimize wildcard search(e.g.: `microsoft*bookmark`), up to 5X+ speed up for cases.
   - Bugfix: active & open files should be search first
   - Optimize: dedup keywords with prefix
-
-## [1.2.1]
-
 - Added `haystack.searchFiles` command to support fuzzy match for quick file opening
 
 ## [1.2.0]

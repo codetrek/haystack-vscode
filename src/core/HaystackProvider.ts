@@ -682,7 +682,6 @@ export class HaystackProvider {
       const config = vscode.workspace.getConfiguration('haystack.search');
       const useGlobalFilters = config.get<boolean>('useGlobalFilters', true);
       const useGitIgnore = config.get<boolean>('exclude.useGitIgnore', false);
-      const symbolParse = config.get<boolean>('symbolParse', false);
       const customExclude = config.get<string[]>('exclude.custom', []);
       const includePatterns = config.get<string[]>('include', ['**/*']);
 
@@ -690,7 +689,6 @@ export class HaystackProvider {
       const updatePayload: UpdateWorkspaceRequest = {
         workspace: workspaceRoot,
         use_global_filters: useGlobalFilters,
-        symbol_parse: symbolParse,
         filters: {
           exclude: {
             use_git_ignore: useGitIgnore,

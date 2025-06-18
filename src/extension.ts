@@ -139,13 +139,6 @@ export function activate(context: vscode.ExtensionContext) {
         return;
       }
 
-      const config = vscode.workspace.getConfiguration('haystack.search');
-      const symbolParse = config.get<boolean>('symbolParse', false);
-      if (!symbolParse) {
-        vscode.window.showErrorMessage('Function symbol search is disabled in settings');
-        return;
-      }
-
       // Get selected text from editor if any
       let initialValue: string | undefined;
       const editor = vscode.window.activeTextEditor;
