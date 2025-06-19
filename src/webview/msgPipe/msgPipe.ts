@@ -53,7 +53,6 @@ export const MsgPipeProvider: React.FC<{
 }> = ({ children, config = {} }) => {
   const { msgPipe: providedMsgPipe, enableGlobalHandlers = true } = config;
   const pipeInstance = React.useMemo(() => providedMsgPipe || createMsgPipe(), [providedMsgPipe]);
-  console.log('=================+>>>>', pipeInstance);
   React.useEffect(() => {
     if (!enableGlobalHandlers || !pipeInstance) return;
     return listenerExtensionMessages(pipeInstance);

@@ -2,12 +2,11 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import axios from 'axios';
+import axios, { AxiosInstance } from 'axios';
 import { exec } from 'child_process';
 import { EventEmitter } from 'events';
 import https from 'https';
 import http from 'http';
-import { Agent } from 'undici';
 import AdmZip from 'adm-zip';
 import type { IHaystack, Status, DownloadProgress, InstallStatus } from './IHaystack';
 import YAML from 'js-yaml';
@@ -48,7 +47,7 @@ const defaultHaystackConfig = (context: vscode.ExtensionContext): HaystackConfig
     global: {
       data_path: dataPath,
       port: useSocket ? 0 : LOCAL_PORT,
-      socket_path: useSocket ? path.join(dataPath, 'haystack.sock') : '',
+      socket_path: useSocket ? `/tmp/haystack-${os.userInfo().uid}.sock` : '',
     },
     client: {
       default_limit: {
@@ -112,6 +111,7 @@ export class Haystack extends EventEmitter implements IHaystack {
   private _downloadProgress: DownloadProgress;
   private _startRetry: number;
   private _connected: boolean;
+  private _axios: AxiosInstance;
 
   private get runningPort(): number {
     return this.useLocalServer ? this.haystackConfig.global.port : GLOBAL_PORT;
@@ -140,6 +140,11 @@ export class Haystack extends EventEmitter implements IHaystack {
       downloadedSize: 0,
       percent: 0,
     };
+    this._axios = axios.create({
+      baseURL: this.getUrl(),
+      timeout: 30e3, // 30 seconds
+      socketPath: this.getSocketPath(),
+    });
     setTimeout(async () => {
       await this.doInit();
     }, 1);
@@ -153,8 +158,7 @@ export class Haystack extends EventEmitter implements IHaystack {
     console.log(`POST to ${this.getUrl()}${uri} with data:`, data);
 
     try {
-      const url = `${this.getUrl()}${uri}`;
-      const response = await axios.post(url, data, { socketPath: this.getSocketPath() });
+      const response = await this._axios.post(uri, data);
       this.connected = true;
       return response;
     } catch (error: unknown) {
@@ -179,33 +183,75 @@ export class Haystack extends EventEmitter implements IHaystack {
     }
 
     try {
-      const url = `${this.getUrl()}${uri}`;
-
-      // Use fetch API for streaming capabilities
-      const response = await fetch(url, {
+      const response = await this._axios.request({
         method: 'POST',
+        url: uri,
+        data,
         headers: {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream',
         },
-        body: JSON.stringify(data),
-        dispatcher: this.getSocketPath()
-          ? new Agent({
-              connect: {
-                socketPath: this.getSocketPath(),
-              },
-            })
-          : undefined,
+        responseType: 'stream',
       });
 
-      if (!response.ok) {
+      if (response.status < 200 || response.status >= 300) {
         throw new Error(`Server responded with status: ${response.status}`);
       }
 
       this.connected = true;
 
-      // Return the readable stream from the response
-      return response.body as ReadableStream<Uint8Array>;
+      // Convert Node.js stream to Web ReadableStream
+      const nodeStream = response.data as http.IncomingMessage;
+      return new ReadableStream({
+        start(controller) {
+          let isClosed = false;
+
+          nodeStream.on('data', (chunk: Buffer) => {
+            if (!isClosed) {
+              try {
+                controller.enqueue(new Uint8Array(chunk));
+              } catch (error) {
+                // Controller might be closed due to cancellation or error
+                if (!isClosed) {
+                  console.warn('Failed to enqueue data to stream controller:', error);
+                  isClosed = true;
+                }
+              }
+            }
+          });
+
+          nodeStream.on('end', () => {
+            if (!isClosed) {
+              try {
+                controller.close();
+                isClosed = true;
+              } catch (error) {
+                // Controller might already be closed
+                console.warn('Failed to close stream controller:', error);
+              }
+            }
+          });
+
+          nodeStream.on('error', (error: Error) => {
+            if (!isClosed) {
+              try {
+                controller.error(error);
+                isClosed = true;
+              } catch (controllerError) {
+                // Controller might already be closed
+                console.warn('Failed to error stream controller:', controllerError);
+              }
+            }
+          });
+        },
+        cancel(reason) {
+          // Clean up the Node.js stream when the ReadableStream is cancelled
+          if (nodeStream && typeof nodeStream.destroy === 'function') {
+            nodeStream.destroy();
+          }
+          console.log('Stream cancelled:', reason);
+        },
+      });
     } catch (error: unknown) {
       const errorMessage = (error as { message?: string })?.message || String(error);
       if (
@@ -670,9 +716,8 @@ export class Haystack extends EventEmitter implements IHaystack {
 
   private async shutdown(): Promise<void> {
     try {
-      const url = `${this.getUrl()}/api/v1/server/stop`;
       console.log('Shutting down Haystack server...');
-      await axios.post(url, undefined, { socketPath: this.getSocketPath() });
+      await this._axios.post('/api/v1/server/stop');
       await this.waitingForShutdown();
       this.status = 'initializing';
       console.log('Haystack server stopped for upgrade.');
@@ -690,10 +735,9 @@ export class Haystack extends EventEmitter implements IHaystack {
         return;
       }
 
-      const url = `${this.getUrl()}/api/v1/server/status`;
       try {
         await new Promise((resolve) => setTimeout(resolve, 1000));
-        await axios.get(url, { socketPath: this.getSocketPath() });
+        await this._axios.get('/api/v1/server/status');
       } catch {
         await new Promise((resolve) => setTimeout(resolve, 1000));
         return;
@@ -734,8 +778,7 @@ export class Haystack extends EventEmitter implements IHaystack {
   private async isRunning(): Promise<boolean> {
     // Check if Haystack is running
     try {
-      const url = `${this.getUrl()}/health`;
-      const response = await axios.get(url, { socketPath: this.getSocketPath() });
+      const response = await this._axios.get('/health');
       if (response.status === 200) {
         return true;
       }

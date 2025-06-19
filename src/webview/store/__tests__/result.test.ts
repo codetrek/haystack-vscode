@@ -9,6 +9,7 @@ import {
   setSearchDone,
   setSearchStream,
   resultCounter,
+  summary,
 } from '../result';
 import { getStreamData } from './data';
 
@@ -53,7 +54,7 @@ suite('Result Store', () => {
     assert.strictEqual(result.searchSummary, 'No results found');
   });
 
-  test('set result stream data', () => {
+  test('set result stream data', async () => {
     const data = getStreamData();
     setSearchStream(data);
     assert.strictEqual(result.status, 'loading');
@@ -68,16 +69,19 @@ suite('Result Store', () => {
       result.results['/home/developer/my-react-app'].files['src/components/userprofile.tsx'].count,
       2,
     );
+    // the derived data update asynchronously, so we need to wait a bit
+    await new Promise((resolve) => setTimeout(resolve, 50));
     assert.strictEqual(resultCounter.totalFiles, 1);
     assert.strictEqual(resultCounter.matchedLines, 2);
-    assert.strictEqual(result.searchSummary, '2 results in 1 files (searching...)');
+    assert.strictEqual(summary.content, '2 results in 1 files (searching...)');
   });
 
-  test('set result status to done after setting stream data', () => {
+  test('set result status to done after setting stream data', async () => {
     const data = getStreamData();
     setSearchStream(data);
     setSearchDone();
     assert.strictEqual(result.status, 'done');
-    assert.strictEqual(result.searchSummary, '2 results in 1 files');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.strictEqual(summary.content, '2 results in 1 files');
   });
 });

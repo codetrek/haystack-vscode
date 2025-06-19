@@ -1,11 +1,11 @@
 import React from 'react';
-import { useResult } from '../../store/hooks';
+import { useSummary } from '../../store/hooks';
 
 export const Summary = () => {
-  const { searchSummary } = useResult();
-  return searchSummary ? (
+  const { content } = useSummary();
+  return content ? (
     <div id="search-summary" className="search-summary">
-      {searchSummary}
+      {content}
     </div>
   ) : null;
 };

@@ -1,4 +1,4 @@
-import { WebViewMessagePipeline } from '../../message/webview';
+import { WebViewMessagePipeline, type SearchResultStream } from '../../message/webview';
 import {
   isLoading,
   setSearchCancelled,
@@ -7,6 +7,14 @@ import {
   setSearchStream,
 } from '../store/result';
 import { setPlatformSupport } from '../store/support';
+import { throttle } from '../utils';
+
+// Throttled version of setSearchStream that processes batched updates
+const throttledSetSearchStream = throttle<SearchResultStream>((dataArray) => {
+  dataArray.forEach((data) => {
+    setSearchStream(data);
+  });
+}, 50);
 
 export function listenerExtensionMessages(pipeInstance: WebViewMessagePipeline): () => void {
   // Setup global message handlers
@@ -17,13 +25,17 @@ export function listenerExtensionMessages(pipeInstance: WebViewMessagePipeline):
         return;
       }
       if (data.isDone) {
+        // Flush any pending data before marking search as done
+        throttledSetSearchStream.flush();
         setSearchDone(data.truncated);
       } else if (data.result?.file) {
-        setSearchStream(data);
+        throttledSetSearchStream(data);
       }
     }),
 
     pipeInstance.on('searchCancelled', () => {
+      // Flush any pending data before cancelling search
+      throttledSetSearchStream.flush();
       setSearchCancelled();
     }),
 

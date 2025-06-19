@@ -61,6 +61,16 @@ export const resultCounter = derive(
   },
 );
 
+export const summary = derive({
+  content: (get) => {
+    const { searchSummary } = get(result);
+    const { totalFiles, matchedLines } = get(resultCounter);
+    return searchSummary
+      .replace('{totalFiles}', totalFiles.toString())
+      .replace('{matchedLines}', matchedLines.toString());
+  },
+});
+
 export function isLoading() {
   return result.status === 'loading';
 }
@@ -106,7 +116,7 @@ export function setSearchDone(isTruncated = false) {
     result.searchSummary = 'No results found';
     return;
   }
-  result.searchSummary = `${resultCounter.matchedLines} results in ${resultCounter.totalFiles} files`;
+  result.searchSummary = `{matchedLines} results in {totalFiles} files`;
   if (isTruncated) {
     result.searchSummary += ` (Results truncated, showing partial matches)`;
   }
@@ -142,12 +152,11 @@ export function setSearchStream(stream: SearchResultStream) {
   const matchedCount = result.results[normalizedWorkSpace].files[normalizedFile].results.length;
   result.results[normalizedWorkSpace].count += matchedCount;
   result.results[normalizedWorkSpace].files[normalizedFile].count = matchedCount;
-
   // update the search summary
-  result.searchSummary = `${resultCounter.matchedLines} results in ${resultCounter.totalFiles} files (searching...)`;
+  result.searchSummary = `{matchedLines} results in {totalFiles} files (searching...)`;
 }
 
 export function setSearchCancelled() {
   result.status = 'cancelled';
-  result.searchSummary = `${resultCounter.matchedLines} results in ${resultCounter.totalFiles} files (cancelled)`;
+  result.searchSummary = `{matchedLines} results in {totalFiles} files (cancelled)`;
 }
