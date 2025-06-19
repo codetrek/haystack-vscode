@@ -2,7 +2,7 @@
   "name": "haystack-search",
   "displayName": "Haystack Search",
   "description": "A VS Code extension that integrates Haystack for advanced file search capabilities.",
-  "version": "1.3.1",
+  "version": "1.3.0",
   "publisher": "codetrek",
   "haystackVersion": "1.5.1",
   "repository": "https://github.com/ai-microsoft/haystack-vscode",
@@ -201,10 +201,10 @@
     },
     "languageModelTools": [
       {
-        "name": "haystack_search",
+        "name": "haystackSearch",
         "displayName": "Search Content",
         "canBeReferencedInPrompt": true,
-        "toolReferenceName": "haystack_search",
+        "toolReferenceName": "haystackSearch",
         "modelDescription": "Search for code in current workspace, supports prefix matching and logical operators to help you find exactly what you're looking for in your codebase.",
         "userDescription": "Search for code in current workspace.",
         "inputSchema": {
@@ -242,10 +242,10 @@
         }
       },
       {
-        "name": "haystack_files",
+        "name": "haystackFiles",
         "displayName": "Search Files",
         "canBeReferencedInPrompt": true,
-        "toolReferenceName": "haystack_search",
+        "toolReferenceName": "haystackFiles",
         "modelDescription": "Search files (for filename or path) in current workspace, supports fuzzy matching on filenames and attempts to return a list of the most relevant files",
         "userDescription": "Search files in current workspace.",
         "inputSchema": {
