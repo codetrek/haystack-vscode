@@ -100,6 +100,7 @@ export type HaystackEvent =
 
 export class Haystack extends EventEmitter implements IHaystack {
   private coreFilePath: string;
+  private ctagsFilePath: string;
   private binDir: string;
   private _status: Status;
   private _installStatus: InstallStatus;
@@ -124,7 +125,8 @@ export class Haystack extends EventEmitter implements IHaystack {
     super();
     // Use globalStorageUri for persistent storage across extension updates
     this.binDir = this.context.globalStorageUri.fsPath;
-    this.coreFilePath = path.join(this.binDir, this.getExecutableName());
+    this.coreFilePath = path.join(this.binDir, this.getExecutableName('haystack'));
+    this.ctagsFilePath = path.join(this.binDir, this.getExecutableName('ctags'));
     this.downloadZipPath = path.join(this.context.globalStorageUri.fsPath, 'download');
     this.builtinZipPath = path.join(this.context.extensionPath, 'pkgs'); // We may have builtin zip files
     this._status = 'initializing';
@@ -358,8 +360,8 @@ export class Haystack extends EventEmitter implements IHaystack {
     return this._installStatus;
   }
 
-  private getExecutableName(): string {
-    return platform() === 'windows' ? 'haystack.exe' : 'haystack';
+  private getExecutableName(name: string): string {
+    return platform() === 'windows' ? `${name}.exe` : name;
   }
 
   /**
@@ -670,6 +672,7 @@ export class Haystack extends EventEmitter implements IHaystack {
         // Make the executable file runnable on non-Windows platforms
         if (platform() !== 'windows') {
           fs.chmodSync(this.coreFilePath, 0o755);
+          fs.chmodSync(this.ctagsFilePath, 0o755);
         }
 
         console.log(`Extracted zip file: ${zipFilePath}`);
