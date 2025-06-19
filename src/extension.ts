@@ -283,8 +283,8 @@ export function activate(context: vscode.ExtensionContext) {
   });
 
   context.subscriptions.push(
-    vscode.lm.registerTool('haystack_search', new HaystackSearchTool(haystackProvider)),
-    vscode.lm.registerTool('haystack_files', new HaystackFilesTool(haystackProvider)),
+    vscode.lm.registerTool('haystackSearch', new HaystackSearchTool(haystackProvider)),
+    vscode.lm.registerTool('haystackFiles', new HaystackFilesTool(haystackProvider)),
   );
 }
 
