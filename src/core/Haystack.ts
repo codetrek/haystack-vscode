@@ -719,12 +719,8 @@ export class Haystack extends EventEmitter implements IHaystack {
       console.log('Shutting down Haystack server...');
       this._axios.post('/api/v1/server/stop');
       // TODO: remove this call before next release
-      this._axios.post(
-        `${getHaystackHost()}:${this.useLocalServer ? LOCAL_PORT : GLOBAL_PORT}/api/v1/server/stop`,
-        undefined,
-        {
-          socketPath: undefined,
-        },
+      axios.get(
+        `http://${getHaystackHost()}:${this.useLocalServer ? LOCAL_PORT : GLOBAL_PORT}/api/v1/server/stop`,
       );
       await this.waitingForShutdown();
       this.status = 'initializing';
