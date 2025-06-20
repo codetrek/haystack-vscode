@@ -1,5 +1,9 @@
 # Changelog
 
+## [1.3.1]
+
+- Fix Language Model Tool API register issue
+
 ## [1.3.0]
 
 - Feat: Enable function search by default
