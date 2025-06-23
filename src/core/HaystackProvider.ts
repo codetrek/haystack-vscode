@@ -8,6 +8,7 @@ import {
   SearchFilesResult,
   SearchSymbolsResponse,
   UpdateWorkspaceRequest,
+  UnsavedFile,
 } from '../types/search';
 import { IHaystack } from './IHaystack';
 
@@ -332,6 +333,9 @@ export class HaystackProvider {
       throw new Error('No workspace folder is specified');
     }
 
+    // Get unsaved files content
+    const unsavedFiles = this.getUnsavedFiles(workspaceRoot);
+
     const searchRequest: SearchContentRequest = {
       workspace: workspaceRoot,
       query,
@@ -354,6 +358,7 @@ export class HaystackProvider {
         max_results_per_file: options.maxResultsPerFile,
       },
       before_after: options.beforeAfter,
+      unsaved_files: unsavedFiles,
     };
 
     try {
@@ -1003,5 +1008,38 @@ export class HaystackProvider {
   private getWorkspaceRootForUri(uri: vscode.Uri): string | undefined {
     const workspaceFolder = vscode.workspace.getWorkspaceFolder(uri);
     return workspaceFolder?.uri.fsPath;
+  }
+
+  /**
+   * Get unsaved files content for the specified workspace
+   */
+  private getUnsavedFiles(workspaceRoot: string): UnsavedFile[] {
+    const unsavedFiles: UnsavedFile[] = [];
+
+    // Get all open text documents
+    const openDocuments = vscode.workspace.textDocuments;
+
+    for (const document of openDocuments) {
+      // Skip if document is not a file or not in the workspace
+      if (document.uri.scheme !== 'file') {
+        continue;
+      }
+
+      const documentPath = document.uri.fsPath;
+      if (!documentPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
+        continue;
+      }
+
+      // Check if document is dirty (has unsaved changes)
+      if (document.isDirty) {
+        const relativePath = path.relative(workspaceRoot, documentPath);
+        unsavedFiles.push({
+          path: relativePath,
+          content: document.getText(),
+        });
+      }
+    }
+
+    return unsavedFiles;
   }
 }

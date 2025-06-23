@@ -33,6 +33,11 @@ export interface EditorContext {
   active_file?: string;
 }
 
+export interface UnsavedFile {
+  path: string;
+  content: string;
+}
+
 export interface SearchContentRequest {
   workspace?: string;
   query: string;
@@ -41,6 +46,7 @@ export interface SearchContentRequest {
   filters?: SearchFilters;
   limit?: SearchLimit;
   before_after?: number;
+  unsaved_files?: UnsavedFile[];
 }
 
 export interface SearchContentLine {

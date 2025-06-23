@@ -1,5 +1,9 @@
 # Changelog
 
+## [next]
+
+- Search results now include changes from unsaved files.
+
 ## [1.3.1]
 
 - Fix Language Model Tool API register issue
