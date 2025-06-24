@@ -134,6 +134,11 @@
             "type": "string"
           },
           "description": "File patterns to include in Haystack search, `**/*` for all files, `*.js` for JavaScript files, etc."
+        },
+        "haystack.telemetry.enabled": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable telemetry data collection for Haystack extension to help improve the product"
         }
       }
     },
@@ -278,6 +283,7 @@
     "@types/react": "^19.1.6",
     "@types/react-dom": "^19.1.6",
     "@vscode/codicons": "^0.0.36",
+    "@vscode/extension-telemetry": "^1.0.0",
     "adm-zip": "^0.5.16",
     "axios": "^1.6.7",
     "derive-valtio": "^0.2.0",

@@ -8,6 +8,9 @@ import { showFilesSearchQuickPick } from './search/searchFiles';
 import { HaystackSearchTool } from './lm-tools/HaystackSearch';
 import { HaystackFilesTool } from './lm-tools/HaystackFiles';
 import { HayStackForTesting } from './core/HayStackForTesting';
+import { createTelemetryManager } from './monitor';
+import { ITelemetryManager } from './monitor/ITelemetryManager';
+import { TELEMETRY_EVENTS } from './monitor/TelemetryEvents';
 
 // Constants
 const isDev = () =>
@@ -19,12 +22,20 @@ const isDev = () =>
 let haystackProvider: HaystackProvider | undefined;
 let searchViewProvider: SearchViewProvider | undefined;
 let haystack: IHaystack | undefined;
+let telemetryManager: ITelemetryManager | undefined;
 
 /**
  * This function is called when your extension is activated
  */
 export function activate(context: vscode.ExtensionContext) {
   console.log(`haystack is running in ${isDev() ? 'dev' : 'prod'} mode`);
+
+  // Initialize telemetry manager first
+  telemetryManager = createTelemetryManager(context);
+
+  // Log extension activation
+  telemetryManager.logUsage(TELEMETRY_EVENTS.EXTENSION_ACTIVATED);
+
   // Simple activation logging without version checks
   console.log('Haystack extension activated');
   if (process.env.IS_TESTING) {
@@ -296,6 +307,11 @@ export function deactivate() {
   if (searchViewProvider) {
     searchViewProvider.dispose();
     searchViewProvider = undefined;
+  }
+  if (telemetryManager) {
+    telemetryManager.logUsage(TELEMETRY_EVENTS.EXTENSION_DEACTIVATED);
+    telemetryManager.dispose();
+    telemetryManager = undefined;
   }
   // No explicit deactivate needed for HaystackCoreManager currently
   haystack = undefined;
