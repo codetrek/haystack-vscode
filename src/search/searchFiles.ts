@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { HaystackProvider } from '../core/HaystackProvider';
+import { fuzzyMatchScore } from './utils';
 
 interface FileQuickPickItem extends vscode.QuickPickItem {
   filePath: string;
@@ -76,9 +77,14 @@ export function createFilesSearchQuickPick(
         // Show status message indicating search is in progress
         showStatusMessage(`$(search~spin) Searching for files: ${query}...`);
 
-        const response = await haystackProvider.searchFiles(activeWorkspaceRoot!, query);
-        if (response.code === 200 && response.data) {
-          const items: FileQuickPickItem[] = [];
+        const workspaces = haystackProvider.getWorkspaceRoots();
+        const items: FileQuickPickItem[] = [];
+        for (const workspace of workspaces) {
+          const response = await haystackProvider.searchFiles(workspace, query);
+          if (response.code !== 200 || !response.data || !response.data.results) {
+            continue;
+          }
+
           for (const filePath of response.data.results) {
             // Format label with icon based on type of file
             const fileIcon = getIconForFile(filePath);
@@ -86,46 +92,40 @@ export function createFilesSearchQuickPick(
 
             // Show file location
             const relativePath = getRelativePath(filePath);
-            const description = relativePath;
+            const description =
+              (workspaces.length > 1 ? path.basename(workspace) + '·' : '') + relativePath;
 
             items.push({
               label,
               description,
               // detail: filePath,
               filePath,
-              workspaceRoot: activeWorkspaceRoot,
+              workspaceRoot: workspace,
               alwaysShow: true,
             });
           }
+        }
 
-          if (items.length > 0) {
-            quickPick.items = items;
-            // Show success status message with count
-            showStatusMessage(
-              `$(files) Found ${items.length} file${items.length === 1 ? '' : 's'}`,
-            );
-          } else {
-            quickPick.items = [
-              {
-                label: '$(info) No matching files found',
-                description: 'Try a different search query',
-                filePath: '',
-              } as FileQuickPickItem,
-            ];
-            // Show no results status message
-            showStatusMessage(`$(warning) No files found matching "${query}"`);
-          }
+        if (items.length > 0) {
+          items.sort((a, b) => {
+            const scoreA = fuzzyMatchScore(query, a.filePath);
+            const scoreB = fuzzyMatchScore(query, b.filePath);
+            return scoreB - scoreA;
+          });
+
+          quickPick.items = items;
+          // Show success status message with count
+          showStatusMessage(`$(files) Found ${items.length} file${items.length === 1 ? '' : 's'}`);
         } else {
-          // Handle error
-          const errorMessage = response.message || 'Unknown error';
-          // Show error in status bar
-          showStatusMessage(`$(error) API Error: ${errorMessage}`, 5000);
           quickPick.items = [
             {
-              label: `$(error) Error: ${errorMessage}`,
+              label: '$(info) No matching files found',
+              description: 'Try a different search query',
               filePath: '',
             } as FileQuickPickItem,
           ];
+          // Show no results status message
+          showStatusMessage(`$(warning) No files found matching "${query}"`);
         }
       } catch (error) {
         console.error('Error searching files:', error);

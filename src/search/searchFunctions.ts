@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as path from 'path';
 import { HaystackProvider } from '../core/HaystackProvider';
+import { fuzzyMatchScore } from './utils';
 
 interface SymbolQuickPickItem extends vscode.QuickPickItem {
   symbolName: string;
@@ -87,9 +88,15 @@ export function createFunctionSymbolsQuickPick(
         // Show status message indicating search is in progress
         showStatusMessage(`$(search~spin) Searching for symbols: ${query}...`);
 
-        const response = await haystackProvider.searchSymbols(activeWorkspaceRoot!, query);
-        if (response.code === 200 && response.data) {
-          const items: SymbolQuickPickItem[] = [];
+        const workspaces = haystackProvider.getWorkspaceRoots();
+        const items: SymbolQuickPickItem[] = [];
+
+        for (const workspace of workspaces) {
+          const response = await haystackProvider.searchSymbols(workspace, query);
+          if (response.code !== 200 || !response.data || !response.data.symbols) {
+            continue;
+          }
+
           for (const symbol of response.data.symbols) {
             for (const file of symbol.files) {
               // Format label with icon based on type of symbol
@@ -100,7 +107,8 @@ export function createFunctionSymbolsQuickPick(
               const description = `${fileBaseName}:${file.line}`;
 
               // The detailed path for additional context
-              const detail = file.path;
+              const detail =
+                (workspaces.length > 1 ? path.basename(workspace) + '·' : '') + file.path;
               items.push({
                 label,
                 description,
@@ -108,56 +116,37 @@ export function createFunctionSymbolsQuickPick(
                 symbolName: symbol.name,
                 filePath: file.path,
                 line: file.line,
-                workspaceRoot: activeWorkspaceRoot,
+                workspaceRoot: workspace,
                 alwaysShow: true,
               });
             }
           }
+        }
 
-          // Sort items by symbol name and then by file path
-          /*
+        if (items.length > 0) {
           items.sort((a, b) => {
-            // First sort by symbol name
-            const nameCompare = a.symbolName.localeCompare(b.symbolName);
-            if (nameCompare !== 0) {
-              return nameCompare;
-            }
-            // Then by file path
-            return a.filePath.localeCompare(b.filePath);
+            const scoreA = fuzzyMatchScore(query, a.symbolName);
+            const scoreB = fuzzyMatchScore(query, b.symbolName);
+            return scoreB - scoreA;
           });
-          */
-          if (items.length > 0) {
-            quickPick.items = items;
-            // Show success status message with count
-            showStatusMessage(
-              `$(symbol-function) Found ${items.length} symbol${items.length === 1 ? '' : 's'}`,
-            );
-          } else {
-            quickPick.items = [
-              {
-                label: '$(info) No matching symbols found',
-                description: 'Try a different search query',
-                symbolName: '',
-                filePath: '',
-                line: 0,
-              } as SymbolQuickPickItem,
-            ];
-            // Show no results status message
-            showStatusMessage(`$(warning) No symbols found matching "${query}"`);
-          }
+
+          quickPick.items = items;
+          // Show success status message with count
+          showStatusMessage(
+            `$(symbol-function) Found ${items.length} symbol${items.length === 1 ? '' : 's'}`,
+          );
         } else {
-          // Handle error
-          const errorMessage = response.message || 'Unknown error';
-          // Show error in status bar
-          showStatusMessage(`$(error) API Error: ${errorMessage}`, 5000);
           quickPick.items = [
             {
-              label: `$(error) Error: ${errorMessage}`,
+              label: '$(info) No matching symbols found',
+              description: 'Try a different search query',
               symbolName: '',
               filePath: '',
               line: 0,
             } as SymbolQuickPickItem,
           ];
+          // Show no results status message
+          showStatusMessage(`$(warning) No symbols found matching "${query}"`);
         }
       } catch (error) {
         console.error('Error searching symbols:', error);
