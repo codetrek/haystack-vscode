@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import TelemetryReporter from '@vscode/extension-telemetry';
+import { TelemetryReporter } from '@vscode/extension-telemetry';
 import { TelemetryConfig, DEFAULT_TELEMETRY_CONFIG } from './TelemetryConfig';
 import { ITelemetryManager } from './ITelemetryManager';
 

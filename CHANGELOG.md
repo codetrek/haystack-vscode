@@ -1,8 +1,14 @@
 # Changelog
 
-## [next]
+## [1.4.0]
 
 - Search results now include changes from unsaved files.
+- Search function & files now support multiple folders in workspace.
+- Add telemetry.
+- Upgrade haystack core to 1.5.2
+  - Search results now include changes from unsaved files.
+  - Increase max indexiable file size to 5MiB.
+  - Bugfix: There will be no result if a file is passed in 'path' filter
 
 ## [1.3.1]
 
