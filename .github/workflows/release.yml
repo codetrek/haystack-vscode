@@ -13,6 +13,7 @@ on:
 permissions:
   contents: write
   packages: read
+  pull-requests: write
 
 jobs:
   prepare:
@@ -21,6 +22,8 @@ jobs:
       version: ${{ steps.package-info.outputs.version }}
       haystackVersion: ${{ steps.package-info.outputs.haystackVersion }}
       should_release: ${{ steps.check-tag.outputs.should_release }}
+      current_branch: ${{ steps.branch-info.outputs.current_branch }}
+      is_main_branch: ${{ steps.branch-info.outputs.is_main_branch }}
     steps:
       - uses: actions/checkout@v4
 
@@ -33,13 +36,25 @@ jobs:
           echo "haystackVersion=$haystackVersion" >> $GITHUB_OUTPUT
           echo "Version: $version, Haystack Version: $haystackVersion"
 
+      - name: Get branch information
+        id: branch-info
+        run: |
+          current_branch="${GITHUB_REF#refs/heads/}"
+          echo "current_branch=$current_branch" >> $GITHUB_OUTPUT
+          if [[ "$current_branch" == "main" ]]; then
+            echo "is_main_branch=true" >> $GITHUB_OUTPUT
+          else
+            echo "is_main_branch=false" >> $GITHUB_OUTPUT
+          fi
+          echo "Current branch: $current_branch"
+
       - name: Check if tag exists
         id: check-tag
         run: |
           tag_exists=$(git ls-remote --tags origin refs/tags/v${{ steps.package-info.outputs.version }} | wc -l)
           if [[ $tag_exists -gt 0 && "${{ github.event.inputs.force_recreate }}" != "true" ]]; then
-            echo "Tag v${{ steps.package-info.outputs.version }} already exists, skipping release"
-            echo "should_release=false" >> $GITHUB_OUTPUT
+            echo "::error::Tag v${{ steps.package-info.outputs.version }} already exists! Use force_recreate=true to override."
+            exit 1
           else
             echo "Creating release for v${{ steps.package-info.outputs.version }}"
             echo "should_release=true" >> $GITHUB_OUTPUT
@@ -237,6 +252,81 @@ jobs:
 
           # Upload artifacts
           gh release upload "v${{ needs.prepare.outputs.version }}" dist/*.vsix --clobber
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  create-pr-to-main:
+    needs: [prepare, create-release]
+    if: needs.prepare.outputs.should_release == 'true' && needs.prepare.outputs.is_main_branch == 'false'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create PR to main branch
+        run: |
+          CURRENT_BRANCH="${{ needs.prepare.outputs.current_branch }}"
+          VERSION="v${{ needs.prepare.outputs.version }}"
+          HAYSTACK_VERSION="${{ needs.prepare.outputs.haystackVersion }}"
+
+          # Check if main branch exists
+          if ! git ls-remote --heads origin main | grep -q main; then
+            echo "::warning::Main branch not found, skipping PR creation"
+            exit 0
+          fi
+
+          # Check if there are any differences between current branch and main
+          git fetch origin main
+          DIFF_COUNT=$(git rev-list --count origin/main..HEAD)
+
+          if [[ $DIFF_COUNT -eq 0 ]]; then
+            echo "::notice::No differences between $CURRENT_BRANCH and main, skipping PR creation"
+            exit 0
+          fi
+
+          # Create PR title and body
+          PR_TITLE="Release $VERSION: Merge $CURRENT_BRANCH to main"
+          PR_BODY="This is an automated PR created after a successful release from a non-main branch."
+
+          # Perform variable substitution
+          PR_BODY="${PR_BODY//\$VERSION/$VERSION}"
+          PR_BODY="${PR_BODY//\$CURRENT_BRANCH/$CURRENT_BRANCH}"
+          PR_BODY="${PR_BODY//\$DIFF_COUNT/$DIFF_COUNT}"
+          PR_BODY="${PR_BODY//\$HAYSTACK_VERSION/$HAYSTACK_VERSION}"
+
+          # Create the PR
+          echo "Creating PR from $CURRENT_BRANCH to main..."
+          if gh pr create \
+            --title "$PR_TITLE" \
+            --body "$PR_BODY" \
+            --base main \
+            --head "$CURRENT_BRANCH" \
+            --label "release,automated"; then
+            echo "::notice::Successfully created PR from $CURRENT_BRANCH to main"
+          else
+            # If PR creation fails, check if PR already exists
+            echo "PR creation failed, checking if PR already exists..."
+            EXISTING_PR=$(gh pr list --head "$CURRENT_BRANCH" --base main --json number --jq '.[0].number // empty')
+            
+            if [[ -n "$EXISTING_PR" ]]; then
+              echo "Found existing PR #$EXISTING_PR, updating it..."
+              if gh pr edit "$EXISTING_PR" \
+                --title "$PR_TITLE" \
+                --body "$PR_BODY"; then
+                echo "::notice::Successfully updated existing PR #$EXISTING_PR"
+              else
+                echo "::error::Failed to update existing PR #$EXISTING_PR"
+                exit 1
+              fi
+            else
+              echo "::error::Failed to create PR and no existing PR found"
+              echo "::error::This might be due to insufficient permissions or other GitHub API issues"
+              exit 1
+            fi
+          fi
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { useSnapshot } from 'valtio';
 import { state } from './state';
 import { useCombinedRef } from '../../hooks/useCombinedRef';
@@ -14,23 +14,19 @@ export const SearchTermInput: React.FC<SearchTermInputProps> = ({
   onSensitiveToggle,
   ref,
 }) => {
-  const snap = useSnapshot(state);
-  const [text, setText] = React.useState(snap.searchTerm);
+  const snap = useSnapshot(state, { sync: true });
   const searchInputRef = useCombinedRef<HTMLInputElement>(ref);
-  useEffect(() => {
-    state.searchTerm = text;
-  }, [text]);
 
   function handleOnClear() {
     if (searchInputRef.current) {
-      setText('');
+      state.searchTerm = '';
       searchInputRef.current.focus();
       onClear?.();
     }
   }
 
   function handleOnSearchTextChange(event: React.ChangeEvent<HTMLInputElement>) {
-    setText(event.target.value);
+    state.searchTerm = event.target.value;
   }
 
   function handleOnSensitiveToggle() {
@@ -51,7 +47,7 @@ export const SearchTermInput: React.FC<SearchTermInputProps> = ({
         placeholder="Search in files..."
         id="searchInput"
         autoFocus
-        value={text}
+        value={snap.searchTerm}
         onChange={handleOnSearchTextChange}
       />
       {snap.searchTerm && (

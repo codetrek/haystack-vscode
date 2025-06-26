@@ -3,7 +3,7 @@ import { useSnapshot } from 'valtio';
 import { state } from './state';
 
 export const SearchOptions: React.FC = () => {
-  const snap = useSnapshot(state);
+  const snap = useSnapshot(state, { sync: true });
   return snap.showOptions ? (
     <div className="search-options" id="searchOptions">
       <div className="search-option">
