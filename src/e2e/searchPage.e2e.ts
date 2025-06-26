@@ -65,6 +65,23 @@ describe('Haystack Search View Test', function () {
     );
   });
 
+  it('should typing correctly', async () => {
+    const input = await view.findWebElement(By.id('searchInput'));
+    await input.sendKeys('test');
+    const value = await input.getAttribute('value');
+    assert.strictEqual(value, 'test', 'Search input should contain the text "test"');
+
+    // cursor back to the beginning
+    await input.sendKeys(Key.HOME);
+    await input.sendKeys('beginning ');
+    const updatedValue = await input.getAttribute('value');
+    assert.strictEqual(
+      updatedValue,
+      'beginning test',
+      'Search input should contain the text "beginning test"',
+    );
+  });
+
   it('should toggle sensitivity button correctly', async () => {
     // 1. verify sensitivity toggle is off initially
     const sensitivityToggle = await view.findWebElement(By.id('caseSensitiveBtn'));
