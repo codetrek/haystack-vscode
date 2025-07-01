@@ -2,6 +2,8 @@ import * as vscode from 'vscode';
 import { HaystackProvider } from '../../core/HaystackProvider';
 import { canonicalizePath } from '../utils';
 import { ExtensionMessagePipeline } from '@/message/extension';
+import { TelemetryManager } from '../../monitor/TelemetryManager';
+import { TELEMETRY_EVENTS } from '../../monitor/TelemetryEvents';
 
 export class SearchHandlers {
   private abortController: AbortController | null = null;
@@ -23,6 +25,19 @@ export class SearchHandlers {
     let webviewPostMessageSentForCompletion = false;
     let globalResultsCount = 0;
     let globallyTruncated = false;
+
+    // Get telemetry manager instance
+    const telemetryManager = TelemetryManager.getInstance();
+    const searchStartTime = performance.now();
+    telemetryManager.logUsage(TELEMETRY_EVENTS.SEARCH_EXECUTED, {
+      queryLength: query.length,
+      caseSensitive: options.caseSensitive,
+      hasIncludeFilter: !!options.include,
+      hasExcludeFilter: !!options.exclude,
+      hasWorkspaceRoot: !!options.workspaceRoot,
+      maxResults: options.maxResults || 0,
+      maxResultsPerFile: options.maxResultsPerFile || 0,
+    });
 
     try {
       await this.cancelSearch(msgPipeline);
@@ -147,6 +162,18 @@ export class SearchHandlers {
                   }
                   await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
                 }
+
+                // Record the duration of search.
+                telemetryManager.logPerformance(
+                  TELEMETRY_EVENTS.SEARCH_EXECUTED_PERFORMANCE,
+                  performance.now() - searchStartTime,
+                  {
+                    totalResults: globalResultsCount,
+                    wasTruncated: globallyTruncated,
+                    workspaceCount: totalWorkspacesToSearch,
+                    queryLength: query.length,
+                  },
+                );
                 return;
               }
 
@@ -217,6 +244,16 @@ export class SearchHandlers {
         }
       }
     } catch (error) {
+      telemetryManager.logError(
+        TELEMETRY_EVENTS.SEARCH_EXECUTED_FAILED,
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          queryLength: query.length,
+          workspaceCount: this.haystackProvider.getWorkspaceRoots().length,
+          searchDuration: performance.now() - searchStartTime,
+        },
+      );
+
       console.log(`Search error: ${error}`);
       if (!webviewPostMessageSentForCompletion) {
         await msgPipeline.post('searchResultStream', {
@@ -243,6 +280,10 @@ export class SearchHandlers {
 
   async cancelSearch(msgPipeline: ExtensionMessagePipeline) {
     if (this.abortController) {
+      // Record when user cancel search operation.
+      const telemetryManager = TelemetryManager.getInstance();
+      telemetryManager.logUsage(TELEMETRY_EVENTS.SEARCH_CANCELED);
+
       await msgPipeline.post('searchCancelled');
 
       this.abortController.abort();

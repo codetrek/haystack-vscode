@@ -3,24 +3,21 @@ export const TELEMETRY_EVENTS = {
   EXTENSION_ACTIVATED: 'haystack.extension.activated',
   EXTENSION_DEACTIVATED: 'haystack.extension.deactivated',
 
+  // Events name should be haystack.event.<subtype>.<event-name>
+  // e.g. haystack.event.search.executed
+  // Performances name should be haystack.performance.<subtype>.<event-name>
+  // e.g. haystack.performance.search.executed
   // Search events
-  SEARCH_EXECUTED: 'haystack.search.executed',
-  SEARCH_SELECTED_TEXT: 'haystack.search.selectedText',
-  WORKSPACE_SYNC: 'haystack.workspace.sync',
+  SEARCH_EXECUTED: 'haystack.event.search.executed',
+  SEARCH_EXECUTED_FAILED: 'haystack.error.search.failed',
+  SEARCH_EXECUTED_PERFORMANCE: 'haystack.performance.search.executed',
+  SEARCH_CANCELED: 'haystack.event.search.canceled',
 
-  // Performance events
-  PERFORMANCE_SEARCH_DURATION: 'haystack.performance.searchDuration',
-  PERFORMANCE_INDEX_BUILD: 'haystack.performance.indexBuild',
-  PERFORMANCE_SERVER_START: 'haystack.performance.serverStart',
-
-  // Command events
-  COMMAND_OPEN_SETTINGS: 'haystack.command.openSettings',
-  COMMAND_SYNC_WORKSPACE: 'haystack.command.syncWorkspace',
-
-  // Error events
-  ERROR_SEARCH_FAILED: 'haystack.error.searchFailed',
-  ERROR_SERVER_CONNECTION: 'haystack.error.serverConnection',
-  ERROR_WORKSPACE_SYNC: 'haystack.error.workspaceSync',
-  ERROR_SERVER_START: 'haystack.error.serverStart',
-  ERROR_INITIALIZATION: 'haystack.error.initialization',
+  // Workspace events
+  WORKSPACE_CREATION: 'haystack.event.workspace.creation',
+  WORKSPACE_CREATION_PERFORMANCE: 'haystack.performance.workspace.creation',
+  WORKSPACE_CREATION_FAILED: 'haystack.error.workspace.creation',
+  WORKSPACE_SYNC: 'haystack.event.workspace.sync',
+  WORKSPACE_SYNC_PERFORMANCE: 'haystack.performance.workspace.sync',
+  WORKSPACE_SYNC_FAILED: 'haystack.error.workspace.sync',
 } as const;

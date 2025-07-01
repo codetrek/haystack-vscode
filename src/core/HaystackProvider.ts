@@ -11,7 +11,8 @@ import {
   UnsavedFile,
 } from '../types/search';
 import { IHaystack } from './IHaystack';
-
+import { TelemetryManager } from '../monitor/TelemetryManager';
+import { TELEMETRY_EVENTS } from '../monitor/TelemetryEvents';
 // Haystack API URLs
 const HAYSTACK_API_VERSION = '/api/v1';
 const WORKSPACE_CREATE_URL = `${HAYSTACK_API_VERSION}/workspace/create`;
@@ -233,7 +234,15 @@ export class HaystackProvider {
       throw new Error('No workspace folder is opened');
     }
 
+    const startTime = performance.now();
+    const telemetryManager = TelemetryManager.getInstance();
+
     try {
+      // Track workspace creation start
+      telemetryManager.logUsage(TELEMETRY_EVENTS.WORKSPACE_CREATION, {
+        workspaceRoot: rootPath,
+      });
+
       // Get configuration values
       const config = vscode.workspace.getConfiguration('haystack.search');
       const useGlobalFilters = config.get<boolean>('useGlobalFilters', true);
@@ -259,7 +268,34 @@ export class HaystackProvider {
       if (response.data.code !== 0) {
         throw new Error(response.data.message || 'Failed to create workspace');
       }
+
+      // Track successful workspace creation with performance metrics
+      telemetryManager.logPerformance(
+        TELEMETRY_EVENTS.WORKSPACE_CREATION_PERFORMANCE,
+        performance.now() - startTime,
+        {
+          workspaceRoot: rootPath,
+          useGlobalFilters,
+          useGitIgnore,
+          customExcludeCount: customExclude.length,
+          includePatternCount: includePatterns.length,
+        },
+      );
     } catch (error) {
+      // Track failed workspace creation
+      const duration = performance.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      telemetryManager.logError(
+        TELEMETRY_EVENTS.WORKSPACE_CREATION_FAILED,
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          workspaceRoot: rootPath,
+          duration,
+          error: errorMessage,
+        },
+      );
+
       throw new Error(`Failed to create workspace: ${error}`);
     }
   }
@@ -684,7 +720,16 @@ export class HaystackProvider {
    */
   private async syncSingleWorkspace(workspaceRoot: string): Promise<void> {
     console.log(`Haystack: Starting workspace sync process for ${workspaceRoot}`);
+
+    const startTime = performance.now();
+    const telemetryManager = TelemetryManager.getInstance();
+
     try {
+      // Track workspace sync start
+      telemetryManager.logUsage(TELEMETRY_EVENTS.WORKSPACE_SYNC, {
+        workspaceRoot,
+      });
+
       // Get configuration values
       const config = vscode.workspace.getConfiguration('haystack.search');
       const useGlobalFilters = config.get<boolean>('useGlobalFilters', true);
@@ -726,8 +771,38 @@ export class HaystackProvider {
       if (syncResponse.data.code !== 0) {
         throw new Error(syncResponse.data.message || 'Failed to sync workspace');
       }
+
+      const syncDuration = performance.now() - startTime;
       console.log(`Haystack: Successfully triggered indexing for ${workspaceRoot}`);
+
+      // Track successful workspace sync with performance metrics
+      telemetryManager.logPerformance(
+        TELEMETRY_EVENTS.WORKSPACE_SYNC_PERFORMANCE,
+        performance.now() - startTime,
+        {
+          workspaceRoot,
+          syncDuration,
+          useGlobalFilters,
+          useGitIgnore,
+          customExcludeCount: customExclude.length,
+          includePatternCount: includePatterns.length,
+        },
+      );
     } catch (error) {
+      // Track failed workspace sync
+      const duration = performance.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      telemetryManager.logError(
+        TELEMETRY_EVENTS.WORKSPACE_SYNC_FAILED,
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          workspaceRoot,
+          duration,
+          error: errorMessage,
+        },
+      );
+
       console.error(`Haystack: Failed to sync workspace ${workspaceRoot}: ${error}`);
       throw new Error(`Failed to sync workspace: ${error}`);
     }
