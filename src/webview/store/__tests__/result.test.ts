@@ -57,7 +57,13 @@ suite('Result Store', () => {
   test('set result stream data', async () => {
     const data = getStreamData();
     setSearchStream(data);
-    assert.strictEqual(result.status, 'loading');
+    // Status should remain 'idle' since setSearchStream no longer changes status
+    // Normal flow: setSearchLoading() -> setSearchStream() -> setSearchDone()
+    // Here we only call setSearchStream() without calling setSearchLoading() first,
+    // so the status should remain at the initial 'idle' state. This aligns with the new design:
+    // - setSearchStream() only updates search result data, doesn't change search status
+    // - Status management is handled exclusively by setSearchLoading() and setSearchDone()
+    assert.strictEqual(result.status, 'idle');
     assert.strictEqual(
       result.results['/home/developer/my-react-app'].workspaceName,
       'my-react-app',
@@ -73,15 +79,28 @@ suite('Result Store', () => {
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.strictEqual(resultCounter.totalFiles, 1);
     assert.strictEqual(resultCounter.matchedLines, 2);
-    assert.strictEqual(summary.content, '2 results in 1 files (searching...)');
+    // In idle status, summary should be empty
+    assert.strictEqual(summary.content, '');
   });
 
   test('set result status to done after setting stream data', async () => {
     const data = getStreamData();
     setSearchStream(data);
+    // Wait for derive to update before calling setSearchDone
+    await new Promise((resolve) => setTimeout(resolve, 50));
     setSearchDone();
     assert.strictEqual(result.status, 'done');
     await new Promise((resolve) => setTimeout(resolve, 50));
     assert.strictEqual(summary.content, '2 results in 1 files');
+  });
+
+  test('set result stream data while searching', async () => {
+    // Start search first
+    setSearchLoading();
+    const data = getStreamData();
+    setSearchStream(data);
+    assert.strictEqual(result.status, 'loading');
+    await new Promise((resolve) => setTimeout(resolve, 50));
+    assert.strictEqual(summary.content, '2 results in 1 files (searching...)');
   });
 });

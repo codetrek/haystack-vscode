@@ -166,3 +166,70 @@ export interface SearchFilesResponse {
   message: string;
   data?: SearchFilesResult;
 }
+
+/**
+ * Base search options that are shared across workspaces (excluding special fields)
+ */
+export interface BaseSearchOptions {
+  caseSensitive?: boolean;
+  include?: string;
+  exclude?: string;
+  maxResults?: number;
+  maxResultsPerFile?: number;
+  beforeAfter?: number;
+  path?: string;
+}
+
+/**
+ * Standardized search options interface used across the application
+ */
+export interface SearchOptions extends BaseSearchOptions {
+  caseSensitive: boolean;
+  include: string;
+  exclude: string;
+  workspaceRoot?: string;
+}
+
+/**
+ * Search stream options with special fields for individual file searches
+ */
+export interface SearchStreamOptions extends BaseSearchOptions {
+  workspaceRoot?: string;
+  unsavedFiles?: UnsavedFile[];
+}
+
+/**
+ * Search state for a specific workspace within a session
+ */
+export interface WorkspaceSearchState {
+  isCompleted: boolean; // Whether the search has completed for this workspace
+  acceptedFiles: Set<string>; // Files that were accepted by the upper layer
+  fileTimestamps: Map<string, number>; // fileName -> timestamp of search that produced current result
+  modifiedDuringSearch: Set<string>; // Files that were modified during search but not yet re-searched
+
+  // Workspace-specific callback functions bound with state management logic
+  // Note: These could theoretically be unified at session level with workspace parameter,
+  // but keeping separate for now to avoid changing caller code structure
+  onSearchResult: (result: SearchContentResult, searchTimestamp: number) => Promise<void>;
+  onDone: (result: SearchContentResult) => Promise<void>;
+}
+
+/**
+ * Search session that spans multiple workspaces
+ */
+export interface SearchSession {
+  query: string;
+  options: BaseSearchOptions; // Global search options shared across workspaces
+  timestamp: number; // Session start time for identifying search instances
+  workspaceStates: Map<string, WorkspaceSearchState>; // workspaceRoot -> state
+}
+
+/**
+ * Legacy interface for backward compatibility
+ * @deprecated Use SearchSession and WorkspaceSearchState instead
+ */
+export interface ActiveSearchState extends WorkspaceSearchState {
+  query: string;
+  options: SearchOptions;
+  timestamp: number;
+}

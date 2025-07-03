@@ -2,7 +2,7 @@ import { proxy, snapshot } from 'valtio';
 import { derive } from 'derive-valtio';
 import type { LineMatch } from '@/types/search';
 import { normalizePath } from '../utils';
-import type { SearchResultStream } from '@/message/webview';
+import type { UpdateResultData } from '@/message/webview';
 
 export interface StructuredResult {
   [workspaceRoot: string]: {
@@ -25,6 +25,7 @@ export interface SearchResult {
   results: StructuredResult;
   errorMessage: string;
   searchSummary: string;
+  isTruncated: boolean;
 }
 
 /**
@@ -37,6 +38,7 @@ export const result = proxy<SearchResult>({
   results: {},
   errorMessage: '',
   searchSummary: '',
+  isTruncated: false,
 });
 
 export const getResultSnpapshot = () => snapshot(result);
@@ -91,17 +93,56 @@ export function hasResults() {
   return Object.keys(result.results).length > 0;
 }
 
+function updateSearchSummary(newStatus?: SearchResult['status']) {
+  // Update status if provided
+  if (newStatus !== undefined) {
+    result.status = newStatus;
+  }
+
+  // Calculate summary based on current status and data
+  const { matchedLines } = resultCounter;
+
+  switch (result.status) {
+    case 'loading':
+      if (matchedLines === 0) {
+        result.searchSummary = 'Searching...';
+      } else {
+        result.searchSummary = `{matchedLines} results in {totalFiles} files (searching...)`;
+      }
+      break;
+    case 'done':
+      if (matchedLines === 0) {
+        result.searchSummary = 'No results found';
+      } else {
+        result.searchSummary = `{matchedLines} results in {totalFiles} files`;
+        if (result.isTruncated) {
+          result.searchSummary += ` (Results truncated, showing partial matches)`;
+        }
+      }
+      break;
+    case 'cancelled':
+      result.searchSummary = `{matchedLines} results in {totalFiles} files (cancelled)`;
+      break;
+    case 'error':
+      // Error status doesn't modify summary
+      break;
+    case 'idle':
+      result.searchSummary = '';
+      break;
+  }
+}
+
 export function resetResult() {
   result.status = 'idle';
   result.results = {};
   result.errorMessage = '';
   result.searchSummary = '';
+  result.isTruncated = false;
 }
 
 export function setSearchLoading() {
   resetResult();
-  result.status = 'loading';
-  result.searchSummary = 'Searching...';
+  updateSearchSummary('loading');
 }
 
 export function setSearchError(message: string) {
@@ -111,19 +152,11 @@ export function setSearchError(message: string) {
 }
 
 export function setSearchDone(isTruncated = false) {
-  result.status = 'done';
-  if (resultCounter.matchedLines === 0) {
-    result.searchSummary = 'No results found';
-    return;
-  }
-  result.searchSummary = `{matchedLines} results in {totalFiles} files`;
-  if (isTruncated) {
-    result.searchSummary += ` (Results truncated, showing partial matches)`;
-  }
+  result.isTruncated = isTruncated;
+  updateSearchSummary('done');
 }
 
-export function setSearchStream(stream: SearchResultStream) {
-  result.status = 'loading';
+export function setSearchStream(stream: UpdateResultData) {
   const normalizedWorkSpace = normalizePath(stream.workspaceRoot);
   const normalizedFile = normalizePath(stream.result.file);
 
@@ -134,6 +167,10 @@ export function setSearchStream(stream: SearchResultStream) {
     count: 0,
     files: {},
   };
+
+  // Get the old count before updating, for proper count adjustment
+  const oldFileCount = result.results[normalizedWorkSpace].files[normalizedFile]?.count || 0;
+
   result.results[normalizedWorkSpace].files[normalizedFile] = result.results[normalizedWorkSpace]
     .files[normalizedFile] || {
     filePath: stream.result.file,
@@ -141,22 +178,21 @@ export function setSearchStream(stream: SearchResultStream) {
     results: [],
   };
 
-  // add the result to the workspace and file
-  result.results[normalizedWorkSpace].files[normalizedFile].results.push(
-    ...(stream.result.lines || []),
-  );
+  // Replace the results instead of appending
+  result.results[normalizedWorkSpace].files[normalizedFile].results = stream.result.lines || [];
   result.results[normalizedWorkSpace].files[normalizedFile].truncated =
     stream.result.truncate || false;
 
-  // update the count for the workspace and file
-  const matchedCount = result.results[normalizedWorkSpace].files[normalizedFile].results.length;
-  result.results[normalizedWorkSpace].count += matchedCount;
-  result.results[normalizedWorkSpace].files[normalizedFile].count = matchedCount;
-  // update the search summary
-  result.searchSummary = `{matchedLines} results in {totalFiles} files (searching...)`;
+  // Update the count: subtract old count, add new count
+  const newFileCount = result.results[normalizedWorkSpace].files[normalizedFile].results.length;
+  result.results[normalizedWorkSpace].count =
+    result.results[normalizedWorkSpace].count - oldFileCount + newFileCount;
+  result.results[normalizedWorkSpace].files[normalizedFile].count = newFileCount;
+
+  // Update summary based on current status
+  updateSearchSummary();
 }
 
 export function setSearchCancelled() {
-  result.status = 'cancelled';
-  result.searchSummary = `{matchedLines} results in {totalFiles} files (cancelled)`;
+  updateSearchSummary('cancelled');
 }

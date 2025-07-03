@@ -31,16 +31,21 @@ export const SearchResultsPanel: React.FC = () => {
   return (
     <div id="workspace-groups">
       <Summary />
-      {Object.entries(results).map(([workspacePath, workspace]) => (
-        <WorkspaceGroup
-          key={workspacePath}
-          workspace={workspacePath}
-          workspaceName={workspace.workspaceName}
-          count={workspace.count}
-          files={workspace.files as StructuredResult[string]['files']}
-          onFileLineClick={handleFileLineClick}
-        />
-      ))}
+      {Object.entries(results)
+        .filter(([, workspace]) => {
+          // Only show workspaces that have files with results
+          return Object.values(workspace.files).some((file) => file.count > 0);
+        })
+        .map(([workspacePath, workspace]) => (
+          <WorkspaceGroup
+            key={workspacePath}
+            workspace={workspacePath}
+            workspaceName={workspace.workspaceName}
+            count={workspace.count}
+            files={workspace.files as StructuredResult[string]['files']}
+            onFileLineClick={handleFileLineClick}
+          />
+        ))}
     </div>
   );
 };

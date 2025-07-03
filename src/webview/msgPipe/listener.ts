@@ -1,6 +1,5 @@
-import { WebViewMessagePipeline, type SearchResultStream } from '../../message/webview';
+import { WebViewMessagePipeline, type UpdateResultData } from '../../message/webview';
 import {
-  isLoading,
   setSearchCancelled,
   setSearchDone,
   setSearchLoading,
@@ -10,27 +9,30 @@ import { setPlatformSupport } from '../store/support';
 import { throttle } from '../utils';
 
 // Throttled version of setSearchStream that processes batched updates
-const throttledSetSearchStream = throttle<SearchResultStream>((dataArray) => {
+const throttledSetSearchStream = throttle<UpdateResultData>((dataArray) => {
   dataArray.forEach((data) => {
-    setSearchStream(data);
+    setSearchStream({
+      result: data.result,
+      workspaceRoot: data.workspaceRoot,
+      workspaceName: data.workspaceName,
+    });
   });
 }, 50);
 
 export function listenerExtensionMessages(pipeInstance: WebViewMessagePipeline): () => void {
   // Setup global message handlers
   const disposables = [
-    pipeInstance.on('searchResultStream', (data) => {
-      if (!isLoading()) {
-        console.error('Received search result stream while not loading:', data);
-        return;
-      }
-      if (data.isDone) {
-        // Flush any pending data before marking search as done
-        throttledSetSearchStream.flush();
-        setSearchDone(data.truncated);
-      } else if (data.result?.file) {
+    pipeInstance.on('updateResult', (data) => {
+      // Allow updating results even after search is done (for research functionality)
+      if (data.result?.file) {
         throttledSetSearchStream(data);
       }
+    }),
+
+    pipeInstance.on('searchDone', (data) => {
+      // Flush any pending data before marking search as done
+      throttledSetSearchStream.flush();
+      setSearchDone(data.truncated);
     }),
 
     pipeInstance.on('searchCancelled', () => {

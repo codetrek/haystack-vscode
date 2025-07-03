@@ -2,19 +2,14 @@ import { MessageWrapper } from './common';
 import type { ExtensionMessageTypes } from './extension';
 import type { SearchContentResult } from '../types/search';
 
-export interface SearchResultStream {
+export interface UpdateResultData {
   result: SearchContentResult;
   workspaceRoot: string;
   workspaceName: string;
-  truncated?: boolean;
-  isDone: false;
 }
 
-export interface SearchResultWithoutData {
-  workspaceRoot?: string;
-  workspaceName?: string;
+export interface SearchDoneData {
   truncated: boolean;
-  isDone: true;
 }
 
 // This file defines the common interfaces and types used for message communication.
@@ -32,7 +27,8 @@ export type WebviewMessageTypes = {
       path: string;
     }>;
   };
-  searchResultStream: SearchResultStream | SearchResultWithoutData;
+  updateResult: UpdateResultData;
+  searchDone: SearchDoneData;
   searchCancelled: never;
   focusSearchInput: never;
   visibilityChanged: {

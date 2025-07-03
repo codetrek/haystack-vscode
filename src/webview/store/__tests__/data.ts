@@ -1,6 +1,6 @@
-import type { SearchResultStream } from '@/message/webview';
+import type { UpdateResultData } from '@/message/webview';
 
-export function getStreamData(truncated = false): SearchResultStream {
+export function getStreamData(_truncated = false): UpdateResultData {
   return {
     result: {
       file: 'src/components/UserProfile.tsx',
@@ -33,7 +33,5 @@ export function getStreamData(truncated = false): SearchResultStream {
     },
     workspaceRoot: '/home/developer/my-react-app',
     workspaceName: 'my-react-app',
-    truncated,
-    isDone: false,
-  } as SearchResultStream;
+  } as UpdateResultData;
 }

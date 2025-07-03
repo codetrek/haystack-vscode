@@ -9,6 +9,10 @@ import {
   SearchSymbolsResponse,
   UpdateWorkspaceRequest,
   UnsavedFile,
+  BaseSearchOptions,
+  SearchStreamOptions,
+  SearchSession,
+  WorkspaceSearchState,
 } from '../types/search';
 import { IHaystack } from './IHaystack';
 import { TelemetryManager } from '../monitor/TelemetryManager';
@@ -42,11 +46,88 @@ interface WorkspaceStatusData {
   indexed_files: number;
 }
 
+/**
+ * Generic TextDocument event debounce handler class
+ */
+class TextDocumentDebouncer {
+  private timeouts: Map<string, Map<string, NodeJS.Timeout>> = new Map();
+
+  constructor(private delay = 500) {}
+
+  /**
+   * Schedule a debounced callback
+   * @param workspaceRoot workspace root path
+   * @param filePath relative file path
+   * @param callback callback function to execute
+   */
+  schedule(workspaceRoot: string, filePath: string, callback: () => void | Promise<void>): void {
+    // Get or create the timeout map for this workspace
+    let workspaceTimeouts = this.timeouts.get(workspaceRoot);
+    if (!workspaceTimeouts) {
+      workspaceTimeouts = new Map();
+      this.timeouts.set(workspaceRoot, workspaceTimeouts);
+    }
+
+    // Clear existing timeout if any
+    const existingTimeout = workspaceTimeouts.get(filePath);
+    if (existingTimeout) {
+      clearTimeout(existingTimeout);
+    }
+
+    // Set new debounced timeout
+    const timeout = setTimeout(async () => {
+      try {
+        await callback();
+      } catch (error) {
+        console.error(`Debounced callback failed for ${filePath}:`, error);
+      }
+
+      // Clean up after execution
+      workspaceTimeouts?.delete(filePath);
+      if (workspaceTimeouts?.size === 0) {
+        this.timeouts.delete(workspaceRoot);
+      }
+    }, this.delay);
+
+    workspaceTimeouts.set(filePath, timeout);
+  }
+
+  /**
+   * Clear all pending timeouts
+   */
+  clear(): void {
+    this.timeouts.forEach((timeoutsMap) => {
+      timeoutsMap.forEach((timeout) => clearTimeout(timeout));
+      timeoutsMap.clear();
+    });
+    this.timeouts.clear();
+  }
+
+  /**
+   * Clear timeouts for a specific workspace
+   * @param workspaceRoot workspace root path
+   */
+  clearWorkspace(workspaceRoot: string): void {
+    const timeoutsMap = this.timeouts.get(workspaceRoot);
+    if (timeoutsMap) {
+      timeoutsMap.forEach((timeout) => clearTimeout(timeout));
+      timeoutsMap.clear();
+      this.timeouts.delete(workspaceRoot);
+    }
+  }
+}
+
 export class HaystackProvider {
   private workspaceRoots: string[] = [];
-  private updateTimeouts: Map<string, Map<string, NodeJS.Timeout>> = new Map(); // Map of workspaceRoot -> (relativePath -> timeout)
   private periodicTaskInterval: NodeJS.Timeout | null;
   private haystack: IHaystack;
+
+  // Debouncer instances for different events
+  private documentSaveDebouncer = new TextDocumentDebouncer(500);
+  private documentChangeDebouncer = new TextDocumentDebouncer(500);
+
+  // Current search session for re-search functionality
+  private currentSearchSession: SearchSession | null = null;
 
   constructor(haystack: IHaystack) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
@@ -93,29 +174,10 @@ export class HaystackProvider {
           // Get the relative path from the workspace root
           const relativePath = path.relative(workspaceRoot, document.uri.fsPath);
 
-          // Get or create the timeout map for this workspace
-          let workspaceTimeouts = this.updateTimeouts.get(workspaceRoot);
-          if (!workspaceTimeouts) {
-            workspaceTimeouts = new Map<string, NodeJS.Timeout>();
-            this.updateTimeouts.set(workspaceRoot, workspaceTimeouts);
-          }
-
-          // Clear existing timeout if any
-          const existingTimeout = workspaceTimeouts.get(relativePath);
-          if (existingTimeout) {
-            clearTimeout(existingTimeout);
-          }
-
-          // Set new timeout
-          const timeout = setTimeout(async () => {
+          // Use debouncer to schedule document update
+          this.documentSaveDebouncer.schedule(workspaceRoot, relativePath, async () => {
             await this.updateDocument(relativePath, workspaceRoot);
-            workspaceTimeouts?.delete(relativePath);
-            if (workspaceTimeouts?.size === 0) {
-              this.updateTimeouts.delete(workspaceRoot);
-            }
-          }, 500);
-
-          workspaceTimeouts.set(relativePath, timeout);
+          });
         } catch (error) {
           console.error(`Failed to update document: ${error}`);
         }
@@ -187,10 +249,166 @@ export class HaystackProvider {
         }
       }
     });
+
+    // Listen for text document changes (for debounced re-search functionality)
+    vscode.workspace.onDidChangeTextDocument((event) => {
+      this.handleDocumentChange(event);
+    });
   }
 
   public getHaystack() {
     return this.haystack;
+  }
+
+  /**
+   * Start a new search session, clearing any existing search state
+   */
+  public newSearch(query: string, options: BaseSearchOptions): void {
+    this.currentSearchSession = {
+      query,
+      options,
+      timestamp: performance.now(),
+      workspaceStates: new Map(),
+    };
+
+    console.log('Haystack: New search session started:', {
+      query,
+      timestamp: this.currentSearchSession.timestamp,
+      options,
+    });
+  }
+
+  /**
+   * Execute search for a specific workspace and listen for file changes
+   */
+  public async searchAndListenWorkspace(
+    workspaceRoot: string,
+    onResult: (result: SearchContentResult, isDone: boolean) => Promise<boolean>,
+    abortSignal?: AbortSignal,
+  ): Promise<void> {
+    if (!this.currentSearchSession) {
+      throw new Error('No active search session. Call newSearch() first.');
+    }
+
+    const session = this.currentSearchSession;
+    const searchTimestamp = performance.now();
+
+    // Create encapsulated callback functions with state management logic
+    const onSearchResult = async (
+      result: SearchContentResult,
+      currentSearchTimestamp: number,
+    ): Promise<void> => {
+      // Check if this search session is still active
+      if (!this.currentSearchSession || this.currentSearchSession.timestamp !== session.timestamp) {
+        console.log('Ignoring result from outdated search session');
+        return;
+      }
+
+      const workspaceState = this.currentSearchSession.workspaceStates.get(workspaceRoot);
+      if (!workspaceState || !result.file) {
+        return;
+      }
+
+      // Check if this file was modified during search and needs immediate re-search
+      if (workspaceState.modifiedDuringSearch.has(result.file)) {
+        console.log(
+          `File ${result.file} was modified during search, discarding stale result and triggering re-search`,
+        );
+        workspaceState.modifiedDuringSearch.delete(result.file);
+
+        // Trigger re-search using the common method
+        this.performReSearch(result.file, workspaceRoot, session);
+
+        return; // Don't process the stale result
+      }
+
+      // Check if this result is newer than the current file result
+      // This automatically handles both re-search updates and invalidated original results
+      const currentFileTimestamp = workspaceState.fileTimestamps.get(result.file) || 0;
+      if (currentSearchTimestamp <= currentFileTimestamp) {
+        console.log(
+          `Result is outdated (${currentSearchTimestamp} <= ${currentFileTimestamp}), discarding`,
+        );
+        return;
+      }
+
+      // Check if this is the first time we're seeing this file (no existing timestamp)
+      const isFirstTime = currentFileTimestamp === 0;
+
+      if (isFirstTime) {
+        // First time seeing this file - call upper layer callback to decide accept/reject
+        const shouldAccept = await onResult(result, false);
+
+        if (shouldAccept) {
+          workspaceState.acceptedFiles.add(result.file);
+          workspaceState.fileTimestamps.set(result.file, currentSearchTimestamp);
+          console.log(
+            `File accepted for first time: ${result.file} (timestamp: ${currentSearchTimestamp})`,
+          );
+        } else {
+          console.log(`File rejected: ${result.file}`);
+          // Don't track rejected files
+        }
+      } else {
+        // File already has a timestamp - it was previously accepted
+        // Just update the content, don't re-decide accept/reject
+        await onResult(result, false);
+        workspaceState.fileTimestamps.set(result.file, currentSearchTimestamp);
+        console.log(`Updated accepted file: ${result.file} (timestamp: ${currentSearchTimestamp})`);
+      }
+    };
+
+    const onDone = async (result: SearchContentResult): Promise<void> => {
+      // Check if this search session is still active
+      if (!this.currentSearchSession || this.currentSearchSession.timestamp !== session.timestamp) {
+        console.log('Ignoring completion from outdated search session');
+        return;
+      }
+
+      const workspaceState = this.currentSearchSession.workspaceStates.get(workspaceRoot);
+      if (!workspaceState) {
+        return;
+      }
+
+      // Mark search as completed for this workspace
+      workspaceState.isCompleted = true;
+      console.log(`Haystack: Search completed for workspace ${workspaceRoot}`);
+
+      // Call the original callback for completion
+      await onResult(result, true);
+    };
+
+    // Create workspace search state
+    const workspaceState: WorkspaceSearchState = {
+      isCompleted: false,
+      acceptedFiles: new Set<string>(),
+      fileTimestamps: new Map<string, number>(),
+      modifiedDuringSearch: new Set<string>(),
+      onSearchResult,
+      onDone,
+    };
+
+    // Store the workspace state
+    this.currentSearchSession.workspaceStates.set(workspaceRoot, workspaceState);
+
+    console.log(`Haystack: Starting search for workspace ${workspaceRoot}`);
+
+    // Execute the search using existing searchStream method
+    await this.searchStream(
+      this.currentSearchSession.query,
+      {
+        ...this.currentSearchSession.options,
+        workspaceRoot,
+      },
+      async (result: SearchContentResult, isDone: boolean) => {
+        if (isDone) {
+          await onDone(result);
+        } else {
+          await onSearchResult(result, searchTimestamp);
+        }
+      },
+      abortSignal,
+    );
   }
 
   private post(uri: string, data: unknown): Promise<HaystackResponse> {
@@ -346,16 +564,7 @@ export class HaystackProvider {
 
   async searchStream(
     query: string,
-    options: {
-      workspaceRoot?: string; // Added workspace root parameter
-      path?: string;
-      caseSensitive?: boolean;
-      include?: string;
-      exclude?: string;
-      maxResults?: number;
-      maxResultsPerFile?: number;
-      beforeAfter?: number;
-    },
+    options: SearchStreamOptions,
     onResult: (result: SearchContentResult, isDone: boolean) => Promise<void>,
     abortSignal?: AbortSignal,
   ): Promise<void> {
@@ -369,8 +578,8 @@ export class HaystackProvider {
       throw new Error('No workspace folder is specified');
     }
 
-    // Get unsaved files content
-    const unsavedFiles = this.getUnsavedFiles(workspaceRoot);
+    // Get unsaved files content (use provided ones or fetch all for workspace)
+    const unsavedFiles = options.unsavedFiles || this.getUnsavedFiles(workspaceRoot);
 
     const searchRequest: SearchContentRequest = {
       workspace: workspaceRoot,
@@ -838,11 +1047,9 @@ export class HaystackProvider {
 
   dispose() {
     // Clear timeouts and intervals
-    this.updateTimeouts.forEach((timeoutsMap) => {
-      timeoutsMap.forEach((timeout) => clearTimeout(timeout));
-      timeoutsMap.clear();
-    });
-    this.updateTimeouts.clear();
+    this.documentSaveDebouncer.clear();
+    this.documentChangeDebouncer.clear();
+
     if (this.periodicTaskInterval) {
       clearInterval(this.periodicTaskInterval);
       this.periodicTaskInterval = null;
@@ -932,10 +1139,14 @@ export class HaystackProvider {
         console.log(`Haystack: Removed workspace root: ${folder.uri.fsPath} (${folder.name})`);
 
         // Clean up any pending timeouts for this workspace
-        if (this.updateTimeouts.has(folder.uri.fsPath)) {
-          console.log(`Haystack: Cleaning up timeouts for removed workspace: ${folder.uri.fsPath}`);
-          this.updateTimeouts.delete(folder.uri.fsPath);
-        }
+        console.log(`Haystack: Cleaning up timeouts for removed workspace: ${folder.uri.fsPath}`);
+        this.documentSaveDebouncer.clearWorkspace(folder.uri.fsPath);
+
+        // Clean up any pending document change timeouts for this workspace
+        console.log(
+          `Haystack: Cleaning up document change timeouts for removed workspace: ${folder.uri.fsPath}`,
+        );
+        this.documentChangeDebouncer.clearWorkspace(folder.uri.fsPath);
       }
     }
 
@@ -1078,6 +1289,64 @@ export class HaystackProvider {
   }
 
   /**
+   * Search for content in a single file, using the latest unsaved content if available
+   * @param filePath Relative path to the file within the workspace
+   * @param workspaceRoot Absolute path to the workspace root
+   * @param query Search query
+   * @param options Search options (caseSensitive, beforeAfter, etc.)
+   * @param abortSignal Optional abort signal for cancelling the search
+   * @returns Promise resolving to SearchContentResult or undefined if no results found
+   */
+  public async searchSingleFile(
+    filePath: string,
+    workspaceRoot: string,
+    query: string,
+    options: BaseSearchOptions,
+    abortSignal?: AbortSignal,
+  ): Promise<SearchContentResult | undefined> {
+    // Collect search results
+    let searchResult: SearchContentResult | undefined;
+
+    // Get unsaved content for the specific file if it exists and is dirty
+    const unsavedFiles: UnsavedFile[] = [];
+    const document = vscode.workspace.textDocuments.find(
+      (doc) =>
+        doc.uri.scheme === 'file' && path.relative(workspaceRoot, doc.uri.fsPath) === filePath,
+    );
+
+    if (document && document.isDirty) {
+      unsavedFiles.push({
+        path: filePath,
+        content: document.getText(),
+      });
+    }
+
+    // Use searchStream to perform the actual search
+    await this.searchStream(
+      query,
+      {
+        ...options,
+        workspaceRoot,
+        path: filePath, // Filter to search only this specific file
+        unsavedFiles, // Pass the specific file's unsaved content
+      },
+      (result: SearchContentResult, isDone: boolean): Promise<void> => {
+        // Collect the first result with actual content
+        if (!isDone && result.file && result.lines && result.lines.length > 0) {
+          searchResult = result;
+        }
+        return Promise.resolve();
+      },
+      abortSignal,
+    );
+
+    // Return the result if it has content, otherwise undefined
+    return searchResult && searchResult.lines && searchResult.lines.length > 0
+      ? searchResult
+      : undefined;
+  }
+
+  /**
    * Get the workspace root for a given URI
    */
   private getWorkspaceRootForUri(uri: vscode.Uri): string | undefined {
@@ -1116,5 +1385,116 @@ export class HaystackProvider {
     }
 
     return unsavedFiles;
+  }
+
+  /**
+   * Handle text document changes for debounced re-search functionality
+   */
+  private handleDocumentChange(event: vscode.TextDocumentChangeEvent): void {
+    const document = event.document;
+
+    // Only handle file-type documents
+    if (document.uri.scheme !== 'file') {
+      return;
+    }
+
+    const workspaceRoot = this.getWorkspaceRootForUri(document.uri);
+    if (!workspaceRoot) {
+      return;
+    }
+
+    // Check if the file is actually inside the workspace
+    if (!document.uri.fsPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
+      return;
+    }
+
+    const relativePath = path.relative(workspaceRoot, document.uri.fsPath);
+
+    // Use debounce mechanism to handle document changes
+    this.documentChangeDebouncer.schedule(workspaceRoot, relativePath, () => {
+      this.onDocumentChanged(workspaceRoot, relativePath);
+    });
+  }
+
+  /**
+   * Called when a document change is debounced and ready to process
+   */
+  private onDocumentChanged(workspaceRoot: string, filePath: string): void {
+    console.log(`Document changed: ${filePath} in workspace: ${workspaceRoot}`);
+
+    // Check if there's an active search session
+    if (!this.currentSearchSession) {
+      console.log('No active search session, skipping re-search');
+      return;
+    }
+
+    const session = this.currentSearchSession;
+
+    // Find the specific workspace state for this file's workspace
+    const workspaceState = session.workspaceStates.get(workspaceRoot);
+    if (!workspaceState) {
+      console.log(`No search state found for workspace ${workspaceRoot}, skipping re-search`);
+      return;
+    }
+
+    // Check if this file is already known (accepted) - if so, re-search immediately
+    if (workspaceState.acceptedFiles.has(filePath)) {
+      console.log(`File ${filePath} is already accepted, performing immediate re-search`);
+      this.performReSearch(filePath, workspaceRoot, session);
+    } else if (!workspaceState.isCompleted) {
+      // File is not yet known and search is still in progress
+      // Mark it as modified so we can re-search it when its result arrives
+      console.log(`File ${filePath} was modified during search, marking for future re-search`);
+      workspaceState.modifiedDuringSearch.add(filePath);
+    } else {
+      // Search is completed and file is not in results - ignore the change
+      console.log(`Skipping re-search for ${filePath}: search completed and file not in results`);
+    }
+  }
+
+  /**
+   * Common method to perform re-search for a file
+   */
+  private performReSearch(filePath: string, workspaceRoot: string, session: SearchSession): void {
+    // Record the timestamp when this re-search starts
+    const reSearchTimestamp = performance.now();
+    console.log(
+      `Starting re-search for ${filePath} at timestamp ${reSearchTimestamp} in workspace ${workspaceRoot}`,
+    );
+
+    // Perform re-search using the same query and options as the active search
+    this.searchSingleFile(filePath, workspaceRoot, session.query, session.options)
+      .then(async (result) => {
+        // Verify the search session is still active and valid
+        if (
+          !this.currentSearchSession ||
+          this.currentSearchSession.timestamp !== session.timestamp
+        ) {
+          console.log('Active search session changed, discarding re-search result');
+          return;
+        }
+
+        const currentWorkspaceState = this.currentSearchSession.workspaceStates.get(workspaceRoot);
+        if (!currentWorkspaceState) {
+          console.log(
+            `Workspace state for ${workspaceRoot} no longer exists, discarding re-search result`,
+          );
+          return;
+        }
+
+        console.log(`Re-search completed for ${filePath} in workspace ${workspaceRoot}`);
+
+        // Call the saved callback with the re-search result (both empty and non-empty)
+        const finalResult = result || {
+          file: filePath,
+          lines: [],
+          truncate: false,
+        };
+
+        await currentWorkspaceState.onSearchResult(finalResult, reSearchTimestamp);
+      })
+      .catch((error) => {
+        console.error(`Re-search failed for ${filePath} in workspace ${workspaceRoot}:`, error);
+      });
   }
 }

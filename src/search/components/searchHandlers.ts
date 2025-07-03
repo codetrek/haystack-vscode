@@ -2,25 +2,22 @@ import * as vscode from 'vscode';
 import { HaystackProvider } from '../../core/HaystackProvider';
 import { canonicalizePath } from '../utils';
 import { ExtensionMessagePipeline } from '@/message/extension';
+import type { SearchOptions, SearchContentResult } from '../../types/search';
 import { TelemetryManager } from '../../monitor/TelemetryManager';
 import { TELEMETRY_EVENTS } from '../../monitor/TelemetryEvents';
 
+interface FileResultInfo {
+  resultCount: number;
+}
+
 export class SearchHandlers {
   private abortController: AbortController | null = null;
+  // Track search session state
+  private searchCompleted = false;
+  private workspaceFiles = new Map<string, Map<string, FileResultInfo>>(); // workspace -> filename -> info
 
   constructor(private readonly haystackProvider: HaystackProvider) {}
-  async handleSearch(
-    msgPipeline: ExtensionMessagePipeline,
-    query: string,
-    options: {
-      caseSensitive: boolean;
-      include: string;
-      exclude: string;
-      maxResults?: number;
-      maxResultsPerFile?: number;
-      workspaceRoot?: string;
-    },
-  ) {
+  async handleSearch(msgPipeline: ExtensionMessagePipeline, query: string, options: SearchOptions) {
     let currentAbortController: AbortController | null = null;
     let webviewPostMessageSentForCompletion = false;
     let globalResultsCount = 0;
@@ -44,6 +41,10 @@ export class SearchHandlers {
 
       this.abortController = new AbortController();
       currentAbortController = this.abortController;
+
+      // Reset search session state
+      this.searchCompleted = false;
+      this.workspaceFiles.clear();
 
       // Get configuration values
       const config = vscode.workspace.getConfiguration('haystack.search');
@@ -82,11 +83,31 @@ export class SearchHandlers {
       const totalWorkspacesToSearch = workspacesToSearch.length;
       let completedSearchCount = 0;
 
+      // Global helper function for search completion
+      const sendSearchCompletion = async (truncated: boolean) => {
+        // Defense against duplicate calls
+        if (webviewPostMessageSentForCompletion) {
+          return;
+        }
+
+        // This should only be called when ALL workspaces are completed
+        this.searchCompleted = true;
+        await msgPipeline.post('searchDone', {
+          truncated,
+        });
+        webviewPostMessageSentForCompletion = true;
+
+        if (this.abortController === currentAbortController) {
+          this.abortController = null;
+        }
+        // Global level: only set when entire search session is done
+        await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
+      };
+
       if (totalWorkspacesToSearch === 0) {
         if (!webviewPostMessageSentForCompletion) {
-          await msgPipeline.post('searchResultStream', {
+          await msgPipeline.post('searchDone', {
             truncated: false, // No search, so not truncated
-            isDone: true,
           });
           webviewPostMessageSentForCompletion = true;
         }
@@ -97,6 +118,60 @@ export class SearchHandlers {
         return;
       }
 
+      // Start a new search session first
+      this.haystackProvider.newSearch(query, {
+        caseSensitive: options.caseSensitive,
+        include: options.include,
+        exclude: options.exclude,
+        maxResults,
+        maxResultsPerFile,
+      });
+
+      // Helper functions - defined outside workspace loop for reuse
+      const getWorkspaceName = (wsRoot: string) => {
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(wsRoot));
+        return workspaceFolder?.name || wsRoot.split(/[/\\]/).pop() || wsRoot;
+      };
+
+      const sendUpdateResult = async (wsRoot: string, resultToSend: SearchContentResult) => {
+        await msgPipeline.post('updateResult', {
+          workspaceRoot: wsRoot,
+          workspaceName: getWorkspaceName(wsRoot),
+          result: resultToSend,
+        });
+
+        // Maintain state for the file
+        if (resultToSend.file) {
+          const newCount = resultToSend.lines ? resultToSend.lines.length : 0;
+          const oldCount =
+            this.workspaceFiles.get(wsRoot)?.get(resultToSend.file)?.resultCount || 0;
+          const countDiff = newCount - oldCount;
+
+          // Update global count
+          globalResultsCount += countDiff;
+
+          // Update file tracking
+          if (!this.workspaceFiles.has(wsRoot)) {
+            this.workspaceFiles.set(wsRoot, new Map<string, FileResultInfo>());
+          }
+          const workspaceFiles = this.workspaceFiles.get(wsRoot)!;
+          workspaceFiles.set(resultToSend.file, { resultCount: newCount });
+        }
+      };
+
+      const triggerGlobalTruncation = async () => {
+        // Global level: mark as truncated and abort current controller
+        globallyTruncated = true;
+        if (!currentAbortController!.signal.aborted) {
+          currentAbortController!.abort();
+        }
+
+        // Directly trigger completion - don't wait for isDone events that may never come
+        completedSearchCount = totalWorkspacesToSearch;
+        await sendSearchCompletion(true);
+      };
+
+      // Execute workspace searches sequentially to avoid overwhelming the system
       for (const workspaceRoot of workspacesToSearch) {
         if (currentAbortController!.signal.aborted) {
           console.log(
@@ -104,17 +179,7 @@ export class SearchHandlers {
           );
           completedSearchCount++;
           if (completedSearchCount >= totalWorkspacesToSearch) {
-            if (!webviewPostMessageSentForCompletion) {
-              await msgPipeline.post('searchResultStream', {
-                truncated: globallyTruncated,
-                isDone: true,
-              });
-              webviewPostMessageSentForCompletion = true;
-              if (this.abortController === currentAbortController) {
-                this.abortController = null;
-              }
-              await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
-            }
+            await sendSearchCompletion(globallyTruncated);
           }
           continue;
         }
@@ -122,106 +187,108 @@ export class SearchHandlers {
         try {
           console.log(`Haystack: Searching in workspace ${workspaceRoot}`);
 
-          await this.haystackProvider.searchStream(
-            query,
-            {
-              workspaceRoot,
-              caseSensitive: options.caseSensitive,
-              include: options.include,
-              exclude: options.exclude,
-              maxResults,
-              maxResultsPerFile,
-            },
-            async (result, isDone) => {
-              // if aborted, only process 'isDone' to complete the count and send final message
-              if (currentAbortController!.signal.aborted && !isDone) {
-                return;
+          await this.haystackProvider.searchAndListenWorkspace(
+            workspaceRoot,
+            async (result, isDone): Promise<boolean> => {
+              // Phase 1: Already done/aborted - only accept updates to existing files
+              if (this.searchCompleted || currentAbortController!.signal.aborted) {
+                if (isDone) {
+                  return true; // Allow done signal to pass through
+                }
+
+                if (result.file && this.workspaceFiles.get(workspaceRoot)?.has(result.file)) {
+                  // Update existing file results
+                  await sendUpdateResult(workspaceRoot, result);
+                  return true;
+                }
+
+                // Reject new files
+                return false;
               }
 
+              // Phase 2: Still searching - decide whether to accept current result
+              if (!isDone && result.file) {
+                // Always accept updates to known files (even during search, even if empty)
+                if (this.workspaceFiles.get(workspaceRoot)?.has(result.file)) {
+                  await sendUpdateResult(workspaceRoot, result);
+                  return true;
+                }
+
+                // For new files, only add if they have content
+                if (result.lines && result.lines.length > 0) {
+                  // For new files, check global limits
+                  if (globallyTruncated) {
+                    // If already globally truncated, reject new results
+                    return false;
+                  }
+
+                  let linesToSend = result.lines;
+                  let currentResultTruncatedByGlobalLimit = false;
+
+                  // Check if we're hitting the global limit
+                  let hitGlobalLimit = false;
+                  let shouldRejectResult = false;
+
+                  if (globalResultsCount + result.lines.length >= maxResults) {
+                    hitGlobalLimit = true;
+                    const remainingSlots = maxResults - globalResultsCount;
+                    if (remainingSlots <= 0) {
+                      // No more space, reject this result entirely
+                      shouldRejectResult = true;
+                    } else {
+                      // Partial space available, truncate the result
+                      linesToSend = result.lines.slice(0, remainingSlots);
+                      currentResultTruncatedByGlobalLimit = true;
+                    }
+                  }
+
+                  // Send the result if we're not rejecting it
+                  if (!shouldRejectResult) {
+                    const resultToSend = {
+                      ...result,
+                      lines: linesToSend,
+                      truncate: result.truncate || currentResultTruncatedByGlobalLimit,
+                    };
+                    await sendUpdateResult(workspaceRoot, resultToSend);
+                  }
+
+                  // Unified global limit handling
+                  if (hitGlobalLimit) {
+                    await triggerGlobalTruncation();
+                    return !shouldRejectResult; // true if we sent result, false if rejected
+                  }
+
+                  return true;
+                } else {
+                  // New file with no content - don't add it to known files
+                  return false;
+                }
+              }
+
+              // Phase 3: Transition to done/aborted state
               if (isDone) {
                 completedSearchCount++;
                 const allSearchesCompleted = completedSearchCount >= totalWorkspacesToSearch;
 
                 if (allSearchesCompleted) {
-                  if (!webviewPostMessageSentForCompletion) {
-                    const workspaceFolder = vscode.workspace.getWorkspaceFolder(
-                      vscode.Uri.file(workspaceRoot),
-                    );
-                    const name =
-                      workspaceFolder?.name || workspaceRoot.split(/[/\\]/).pop() || workspaceRoot;
-                    await msgPipeline.post('searchResultStream', {
-                      workspaceRoot,
-                      workspaceName: name,
-                      truncated: result.truncate || false || globallyTruncated,
-                      isDone: true,
-                    });
-                    webviewPostMessageSentForCompletion = true;
-                  }
-                  if (this.abortController === currentAbortController) {
-                    this.abortController = null;
-                  }
-                  await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
-                }
+                  await sendSearchCompletion(result.truncate || false || globallyTruncated);
 
-                // Record the duration of search.
-                telemetryManager.logPerformance(
-                  TELEMETRY_EVENTS.SEARCH_EXECUTED_PERFORMANCE,
-                  performance.now() - searchStartTime,
-                  {
-                    totalResults: globalResultsCount,
-                    wasTruncated: globallyTruncated,
-                    workspaceCount: totalWorkspacesToSearch,
-                    queryLength: query.length,
-                  },
-                );
-                return;
+                  // Record the duration of search.
+                  telemetryManager.logPerformance(
+                    TELEMETRY_EVENTS.SEARCH_EXECUTED_PERFORMANCE,
+                    performance.now() - searchStartTime,
+                    {
+                      totalResults: globalResultsCount,
+                      wasTruncated: globallyTruncated,
+                      workspaceCount: totalWorkspacesToSearch,
+                      queryLength: query.length,
+                    },
+                  );
+                }
+                return true;
               }
 
-              if (result.file && result.lines && result.lines.length > 0) {
-                if (globallyTruncated) {
-                  // If already globally truncated, ignore new results
-                  return;
-                }
-                let linesToSend = result.lines;
-                let currentResultTruncatedByGlobalLimit = false;
-
-                if (globalResultsCount + result.lines.length >= maxResults) {
-                  const remainingSlots = maxResults - globalResultsCount;
-                  if (remainingSlots <= 0) {
-                    // No more slots
-                    globallyTruncated = true;
-                    if (!currentAbortController!.signal.aborted) {
-                      currentAbortController!.abort(); // Abort all further processing
-                    }
-                    return; // Don't send this result
-                  }
-                  linesToSend = result.lines.slice(0, remainingSlots);
-                  globallyTruncated = true; // Mark as globally truncated
-                  currentResultTruncatedByGlobalLimit = true; // This specific result chunk was cut
-                }
-
-                globalResultsCount += linesToSend.length;
-
-                const workspaceFolder = vscode.workspace.getWorkspaceFolder(
-                  vscode.Uri.file(workspaceRoot),
-                );
-                const name =
-                  workspaceFolder?.name || workspaceRoot.split(/[/\\]/).pop() || workspaceRoot;
-                await msgPipeline.post('searchResultStream', {
-                  workspaceRoot,
-                  workspaceName: name,
-                  result: {
-                    ...result,
-                    lines: linesToSend,
-                    truncate: result.truncate || currentResultTruncatedByGlobalLimit,
-                  },
-                  isDone: false,
-                });
-
-                if (globallyTruncated && !currentAbortController!.signal.aborted) {
-                  currentAbortController!.abort(); // Abort all further processing
-                }
-              }
+              return false; // Default: reject unknown cases
             },
             currentAbortController!.signal,
           );
@@ -229,17 +296,7 @@ export class SearchHandlers {
           console.error(`Error searching workspace ${workspaceRoot}: ${error}`);
           completedSearchCount++;
           if (completedSearchCount >= totalWorkspacesToSearch) {
-            if (!webviewPostMessageSentForCompletion) {
-              await msgPipeline.post('searchResultStream', {
-                truncated: globallyTruncated,
-                isDone: true,
-              });
-              webviewPostMessageSentForCompletion = true;
-            }
-            if (this.abortController === currentAbortController) {
-              this.abortController = null;
-            }
-            await vscode.commands.executeCommand('setContext', 'haystackSearching', false);
+            await sendSearchCompletion(globallyTruncated);
           }
         }
       }
@@ -255,12 +312,11 @@ export class SearchHandlers {
       );
 
       console.log(`Search error: ${error}`);
+      this.searchCompleted = true;
       if (!webviewPostMessageSentForCompletion) {
-        await msgPipeline.post('searchResultStream', {
+        await msgPipeline.post('searchDone', {
           truncated: globallyTruncated,
-          isDone: true,
         });
-        // webviewPostMessageSentForCompletion = true; // Not strictly needed as this is the end of the try-catch
       }
       // cancelSearch handles abortController nullification and context setting.
       // If currentAbortController is this.abortController, cancelSearch will handle it.
@@ -288,6 +344,9 @@ export class SearchHandlers {
 
       this.abortController.abort();
       this.abortController = null;
+      // Reset search session state
+      this.searchCompleted = false;
+      this.workspaceFiles.clear();
       // Ensure context is reset when a search is cancelled
       vscode.commands.executeCommand('setContext', 'haystackSearching', false);
     }

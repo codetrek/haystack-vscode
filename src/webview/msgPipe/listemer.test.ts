@@ -54,30 +54,48 @@ suite('Listener business messages from extension', () => {
     resetResult();
   });
 
-  // only handle searchResultStream message after search is started
-  test("handle `searchResultStream` message when searching isn't started", (done) => {
+  // updateResult can be handled even when search isn't started (for research functionality)
+  test("handle `updateResult` message when searching isn't started", (done) => {
     const { msgPipe, mockSendMessageFromExtension } = createStubMsgPipe();
     listenerExtensionMessages(msgPipe);
-    msgPipe.on('searchResultStream', () => {
-      const snap = getResultSnpapshot();
-      assert.strictEqual(snap.status, 'idle');
-      assert.strictEqual(Object.keys(snap.results).length, 0);
-      done();
+    msgPipe.on('updateResult', () => {
+      // Wait for throttled function to execute
+      setTimeout(() => {
+        const snap = getResultSnpapshot();
+        assert.strictEqual(snap.status, 'idle');
+        assert.strictEqual(snap.results['/home/developer/my-react-app'].count, 2);
+        done();
+      }, 100);
     });
-    mockSendMessageFromExtension('searchResultStream', getStreamData());
+    mockSendMessageFromExtension('updateResult', getStreamData());
   });
 
-  test('handle `searchResultStream` message when searching is started', (done) => {
+  test('handle `updateResult` message when searching is started', (done) => {
     const { msgPipe, mockSendMessageFromExtension } = createStubMsgPipe();
     listenerExtensionMessages(msgPipe);
-    msgPipe.on('searchResultStream', () => {
+    msgPipe.on('updateResult', () => {
+      // Wait for throttled function to execute
+      setTimeout(() => {
+        const snap = getResultSnpapshot();
+        assert.strictEqual(snap.status, 'loading');
+        assert.strictEqual(snap.results['/home/developer/my-react-app'].count, 2);
+        done();
+      }, 100);
+    });
+    setSearchLoading();
+    mockSendMessageFromExtension('updateResult', getStreamData());
+  });
+
+  test('handle `searchDone` message', (done) => {
+    const { msgPipe, mockSendMessageFromExtension } = createStubMsgPipe();
+    listenerExtensionMessages(msgPipe);
+    msgPipe.on('searchDone', () => {
       const snap = getResultSnpapshot();
-      assert.strictEqual(snap.status, 'loading');
-      assert.strictEqual(snap.results['/home/developer/my-react-app'].count, 2);
+      assert.strictEqual(snap.status, 'done');
       done();
     });
     setSearchLoading();
-    mockSendMessageFromExtension('searchResultStream', getStreamData());
+    mockSendMessageFromExtension('searchDone', { truncated: false });
   });
 
   test('handle `searchCancelled` message: no data', (done) => {
@@ -97,13 +115,16 @@ suite('Listener business messages from extension', () => {
     const { msgPipe, mockSendMessageFromExtension } = createStubMsgPipe();
     listenerExtensionMessages(msgPipe);
     msgPipe.on('searchCancelled', () => {
-      const snap = getResultSnpapshot();
-      assert.strictEqual(snap.status, 'cancelled');
-      assert.strictEqual(snap.results['/home/developer/my-react-app'].count, 2);
-      done();
+      // Wait for throttled function to execute
+      setTimeout(() => {
+        const snap = getResultSnpapshot();
+        assert.strictEqual(snap.status, 'cancelled');
+        assert.strictEqual(snap.results['/home/developer/my-react-app'].count, 2);
+        done();
+      }, 100);
     });
     setSearchLoading();
-    mockSendMessageFromExtension('searchResultStream', getStreamData());
+    mockSendMessageFromExtension('updateResult', getStreamData());
     mockSendMessageFromExtension('searchCancelled');
   });
 
