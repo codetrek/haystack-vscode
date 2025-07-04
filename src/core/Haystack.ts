@@ -2,7 +2,7 @@ import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as os from 'os';
-import axios, { AxiosInstance } from 'axios';
+import axios from 'axios';
 import { exec } from 'child_process';
 import { EventEmitter } from 'events';
 import https from 'https';
@@ -112,10 +112,9 @@ export class Haystack extends EventEmitter implements IHaystack {
   private _downloadProgress: DownloadProgress;
   private _startRetry: number;
   private _connected: boolean;
-  private _axios: AxiosInstance;
 
   private get runningPort(): number {
-    return this.useLocalServer ? this.haystackConfig.global.port : GLOBAL_PORT;
+    return (this.useLocalServer ? this.haystackConfig.global.port : GLOBAL_PORT) || 0;
   }
 
   constructor(
@@ -132,6 +131,8 @@ export class Haystack extends EventEmitter implements IHaystack {
     this._status = 'initializing';
     this._installStatus = 'initializing';
     this.haystackVersion = 'v' + context.extension.packageJSON.haystackVersion;
+    // NOTE: Config is initialized later in `doInit()`.
+    //       Don't use config synchronously in or after constructor.
     this.haystackConfig = defaultHaystackConfig(this.context);
     this.HAYSTACK_ZIP_FILE_NAME = `haystack-${currentPlatform}-${this.haystackVersion}.zip`;
     this._startRetry = 0;
@@ -142,14 +143,17 @@ export class Haystack extends EventEmitter implements IHaystack {
       downloadedSize: 0,
       percent: 0,
     };
-    this._axios = axios.create({
+    setTimeout(async () => {
+      await this.doInit();
+    }, 1);
+  }
+
+  private get _axios() {
+    return axios.create({
       baseURL: this.getUrl(),
       timeout: 30e3, // 30 seconds
       socketPath: this.getSocketPath(),
     });
-    setTimeout(async () => {
-      await this.doInit();
-    }, 1);
   }
 
   public async post(uri: string, data: unknown) {
@@ -418,6 +422,7 @@ export class Haystack extends EventEmitter implements IHaystack {
       const configPath = path.join(this.binDir, 'config.yaml');
       const configContent = await fs.promises.readFile(configPath, 'utf8');
       this.haystackConfig = YAML.load(configContent) as HaystackConfig;
+      console.log(`Haystack config: ${JSON.stringify(this.haystackConfig)}`);
     } catch (error) {
       console.error(`Failed to read Haystack config: ${error}`);
       this.status = 'error';
