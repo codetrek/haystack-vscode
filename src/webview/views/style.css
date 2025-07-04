@@ -34,6 +34,7 @@ body {
   font-size: 13px;
   line-height: 18px;
   padding-right: 68px;
+  min-width: 0;
 }
 
 .search-input:focus {
