@@ -129,6 +129,24 @@ export class HaystackProvider {
   // Current search session for re-search functionality
   private currentSearchSession: SearchSession | null = null;
 
+  /**
+   * Check if a file path is within a workspace root.
+   * Uses case-sensitive comparison on Linux/WSL and case-insensitive on Windows.
+   */
+  private isPathInWorkspace(filePath: string, workspaceRoot: string): boolean {
+    // Normalize paths to use forward slashes
+    const normalizedFilePath = filePath.replace(/\\/g, '/');
+    const normalizedWorkspaceRoot = workspaceRoot.replace(/\\/g, '/');
+
+    // On Windows, do case-insensitive comparison
+    // On Linux/WSL, do case-sensitive comparison
+    if (process.platform === 'win32') {
+      return normalizedFilePath.toLowerCase().startsWith(normalizedWorkspaceRoot.toLowerCase());
+    } else {
+      return normalizedFilePath.startsWith(normalizedWorkspaceRoot);
+    }
+  }
+
   constructor(haystack: IHaystack) {
     const workspaceFolders = vscode.workspace.workspaceFolders;
     // Initialize all workspace roots
@@ -165,7 +183,7 @@ export class HaystackProvider {
             return;
           }
           // Check if the file is actually inside the workspace
-          if (!document.uri.fsPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
+          if (!this.isPathInWorkspace(document.uri.fsPath, workspaceRoot)) {
             // File is outside the workspace (like .code-workspace files)
             console.log(`Skipping document outside workspace: ${document.uri.fsPath}`);
             return;
@@ -196,7 +214,7 @@ export class HaystackProvider {
             }
 
             // Check if the file is actually inside the workspace
-            if (!uri.fsPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
+            if (!this.isPathInWorkspace(uri.fsPath, workspaceRoot)) {
               // File is outside the workspace (like .code-workspace files)
               console.log(`Skipping deleted file outside workspace: ${uri.fsPath}`);
               continue;
@@ -225,7 +243,7 @@ export class HaystackProvider {
               continue;
             }
             // Check if the file is actually inside the workspace
-            if (!uri.fsPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
+            if (!this.isPathInWorkspace(uri.fsPath, workspaceRoot)) {
               // File is outside the workspace (like .code-workspace files)
               console.log(`Skipping created file outside workspace: ${uri.fsPath}`);
               continue;
@@ -1370,7 +1388,7 @@ export class HaystackProvider {
       }
 
       const documentPath = document.uri.fsPath;
-      if (!documentPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
+      if (!this.isPathInWorkspace(documentPath, workspaceRoot)) {
         continue;
       }
 
@@ -1404,7 +1422,7 @@ export class HaystackProvider {
     }
 
     // Check if the file is actually inside the workspace
-    if (!document.uri.fsPath.toLowerCase().startsWith(workspaceRoot.toLowerCase())) {
+    if (!this.isPathInWorkspace(document.uri.fsPath, workspaceRoot)) {
       return;
     }
 

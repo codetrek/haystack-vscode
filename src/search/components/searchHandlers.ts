@@ -1,6 +1,5 @@
 import * as vscode from 'vscode';
 import { HaystackProvider } from '../../core/HaystackProvider';
-import { canonicalizePath } from '../utils';
 import { ExtensionMessagePipeline } from '@/message/extension';
 import type { SearchOptions, SearchContentResult } from '../../types/search';
 import { TelemetryManager } from '../../monitor/TelemetryManager';
@@ -56,7 +55,7 @@ export class SearchHandlers {
       let workspacesToSearch: string[];
 
       if (options.workspaceRoot) {
-        workspacesToSearch = [canonicalizePath(options.workspaceRoot)];
+        workspacesToSearch = [options.workspaceRoot];
       } else {
         // Default to all workspaces if no specific one is provided
         // Fetch directly from the provider to get the latest order

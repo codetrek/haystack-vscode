@@ -9,10 +9,10 @@ export function escapeHTML(str: string) {
 }
 
 // Helper function to normalize workspace root paths for grouping
-// Converts to lowercase, normalizes path separators, and removes trailing slashes for consistent keying.
+// Normalizes path separators and removes trailing slashes for consistent keying.
+// Note: We don't convert to lowercase since Linux/WSL filesystems are case-sensitive.
 export function normalizePath(path: string) {
   return path
-    .toLowerCase()
     .replace(/\\/g, '/') // Replace backslashes with forward slashes
     .replace(/\/+$/, ''); // Remove trailing slashes
 }

@@ -72,7 +72,7 @@ suite('Result Store', () => {
     assert.strictEqual(result.results['/home/developer/my-react-app'].count, 2);
 
     assert.strictEqual(
-      result.results['/home/developer/my-react-app'].files['src/components/userprofile.tsx'].count,
+      result.results['/home/developer/my-react-app'].files['src/components/UserProfile.tsx'].count,
       2,
     );
     // the derived data update asynchronously, so we need to wait a bit
