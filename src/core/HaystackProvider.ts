@@ -622,6 +622,7 @@ export class HaystackProvider {
       },
       before_after: options.beforeAfter,
       unsaved_files: unsavedFiles,
+      unsaved_files_only: options.unsavedFilesOnly,
     };
 
     try {
@@ -1347,6 +1348,7 @@ export class HaystackProvider {
         workspaceRoot,
         path: filePath, // Filter to search only this specific file
         unsavedFiles, // Pass the specific file's unsaved content
+        unsavedFilesOnly: true, // Only search unsaved files for better performance
       },
       (result: SearchContentResult, isDone: boolean): Promise<void> => {
         // Collect the first result with actual content

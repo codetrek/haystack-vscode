@@ -47,6 +47,7 @@ export interface SearchContentRequest {
   limit?: SearchLimit;
   before_after?: number;
   unsaved_files?: UnsavedFile[];
+  unsaved_files_only?: boolean;
 }
 
 export interface SearchContentLine {
@@ -196,6 +197,7 @@ export interface SearchOptions extends BaseSearchOptions {
 export interface SearchStreamOptions extends BaseSearchOptions {
   workspaceRoot?: string;
   unsavedFiles?: UnsavedFile[];
+  unsavedFilesOnly?: boolean;
 }
 
 /**
