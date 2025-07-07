@@ -79,6 +79,7 @@ body {
 .clear-button {
   right: 48px; /* Position it to the left of the case sensitive button */
   font-size: 10px;
+  line-height: 10px;
 }
 
 /* Adjust case sensitive button position */
