@@ -2,6 +2,7 @@ import { HaystackProvider } from '@/core/HaystackProvider';
 import { SearchContentResult } from '@/types/search';
 import * as vscode from 'vscode';
 import { StringBuilder } from './StringBuilder';
+import { TELEMETRY_CONSTANTS } from '@/monitor/TelemetryConstant';
 
 interface HaystackSearchToolInput {
   query: string;
@@ -45,6 +46,7 @@ export class HaystackSearchTool implements vscode.LanguageModelTool<HaystackSear
         maxResults: options.input.limit || 500,
         maxResultsPerFile: 50,
         beforeAfter: 1,
+        telemetrySource: TELEMETRY_CONSTANTS.TELEMETRY_SOURCE_AI_TOOL,
       },
       /* eslint-disable-line require-await -- callback expects a Promise */ async (result) => {
         results.push(result);
