@@ -11,6 +11,7 @@ import { HayStackForTesting } from './core/HayStackForTesting';
 import { createTelemetryManager } from './monitor';
 import { ITelemetryManager } from './monitor/ITelemetryManager';
 import { TELEMETRY_CONSTANTS } from './monitor/TelemetryConstant';
+import { SearchHighlightManager } from './search/SearchHighlight';
 
 // Constants
 const isDev = () =>
@@ -23,6 +24,7 @@ let haystackProvider: HaystackProvider | undefined;
 let searchViewProvider: SearchViewProvider | undefined;
 let haystack: IHaystack | undefined;
 let telemetryManager: ITelemetryManager | undefined;
+let searchHighlightManager: SearchHighlightManager | undefined;
 
 /**
  * This function is called when your extension is activated
@@ -52,7 +54,46 @@ export function activate(context: vscode.ExtensionContext) {
   // Pass necessary info to HaystackProvider if needed
   // Example: haystackProvider = new HaystackProvider(haystackCoreManager.getCorePath());
   haystackProvider = new HaystackProvider(haystack);
-  searchViewProvider = new SearchViewProvider(context, haystackProvider, haystack.getIsSupported());
+
+  // Initialize SearchHighlightManager
+  searchHighlightManager = new SearchHighlightManager();
+  context.subscriptions.push(searchHighlightManager);
+
+  searchViewProvider = new SearchViewProvider(
+    context,
+    haystackProvider,
+    haystack.getIsSupported(),
+    searchHighlightManager,
+  );
+
+  // Set up document event listeners for highlight management
+  context.subscriptions.push(
+    vscode.window.onDidChangeActiveTextEditor((editor) => {
+      if (editor && searchHighlightManager) {
+        searchHighlightManager.onDocumentActivated(editor.document);
+      }
+    }),
+  );
+
+  context.subscriptions.push(
+    vscode.window.onDidChangeVisibleTextEditors((editors) => {
+      if (searchHighlightManager) {
+        editors.forEach((editor) => {
+          searchHighlightManager!.onDocumentActivated(editor.document);
+        });
+      }
+    }),
+  );
+
+  // Also apply highlights to currently visible editors on startup
+  if (searchHighlightManager) {
+    vscode.window.visibleTextEditors.forEach((editor) => {
+      searchHighlightManager!.onDocumentActivated(editor.document);
+    });
+    if (vscode.window.activeTextEditor) {
+      searchHighlightManager.onDocumentActivated(vscode.window.activeTextEditor.document);
+    }
+  }
 
   // Register search view
   context.subscriptions.push(
@@ -307,6 +348,10 @@ export function deactivate() {
   if (searchViewProvider) {
     searchViewProvider.dispose();
     searchViewProvider = undefined;
+  }
+  if (searchHighlightManager) {
+    searchHighlightManager.dispose();
+    searchHighlightManager = undefined;
   }
   if (telemetryManager) {
     telemetryManager.logUsage(TELEMETRY_CONSTANTS.EXTENSION_DEACTIVATED);

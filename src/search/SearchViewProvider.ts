@@ -3,6 +3,7 @@ import { HaystackProvider } from '../core/HaystackProvider';
 import { getSearchTemplate } from '../template';
 import { SearchHandlers } from './components/searchHandlers';
 import { ExtensionMessagePipeline } from '@/message/extension';
+import { SearchHighlightManager } from './SearchHighlight';
 
 export class SearchViewProvider implements vscode.WebviewViewProvider {
   public static readonly viewType = 'haystackSearch';
@@ -20,9 +21,10 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
     private readonly _extensionContext: vscode.ExtensionContext,
     private readonly _haystackProvider: HaystackProvider,
     private readonly _isHaystackSupported: boolean,
+    private readonly _searchHighlightManager?: SearchHighlightManager,
   ) {
     this._extensionUri = _extensionContext.extensionUri;
-    this._searchHandlers = new SearchHandlers(_haystackProvider);
+    this._searchHandlers = new SearchHandlers(_haystackProvider, _searchHighlightManager);
     this._statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
     // Start status updates immediately when the provider is created
     this.startStatusUpdates();

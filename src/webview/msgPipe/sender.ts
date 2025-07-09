@@ -23,10 +23,6 @@ export function doSearch(
 }
 
 export function cancelSearch(sender: WebViewMessagePipeline['post']) {
-  if (!isLoading()) {
-    return;
-  }
-  // we should set cancelled state after we receive the searchCancelled message
-  // setSearchCancelled();
+  // Always send cancelSearch message to clear highlights, regardless of loading state
   sender('cancelSearch');
 }

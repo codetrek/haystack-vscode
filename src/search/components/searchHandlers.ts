@@ -4,6 +4,7 @@ import { ExtensionMessagePipeline } from '@/message/extension';
 import type { SearchOptions, SearchContentResult } from '../../types/search';
 import { TELEMETRY_CONSTANTS } from '../../monitor/TelemetryConstant';
 import { TelemetryOperation } from '../../monitor/TelemetryTracker';
+import { SearchHighlightManager } from '../SearchHighlight';
 
 interface FileResultInfo {
   resultCount: number;
@@ -15,7 +16,10 @@ export class SearchHandlers {
   private searchCompleted = false;
   private workspaceFiles = new Map<string, Map<string, FileResultInfo>>(); // workspace -> filename -> info
 
-  constructor(private readonly haystackProvider: HaystackProvider) {}
+  constructor(
+    private readonly haystackProvider: HaystackProvider,
+    private readonly searchHighlightManager?: SearchHighlightManager,
+  ) {}
   async handleSearch(msgPipeline: ExtensionMessagePipeline, query: string, options: SearchOptions) {
     let currentAbortController: AbortController | null = null;
     let webviewPostMessageSentForCompletion = false;
@@ -47,6 +51,11 @@ export class SearchHandlers {
 
       this.abortController = new AbortController();
       currentAbortController = this.abortController;
+
+      // Clear search highlights when starting a new search
+      if (this.searchHighlightManager) {
+        this.searchHighlightManager.clearSearch();
+      }
 
       // Reset search session state
       this.searchCompleted = false;
@@ -145,6 +154,13 @@ export class SearchHandlers {
           workspaceName: getWorkspaceName(wsRoot),
           result: resultToSend,
         });
+
+        // Update search highlights if manager is available
+        if (this.searchHighlightManager && resultToSend.file && resultToSend.lines) {
+          const fullPath = vscode.Uri.joinPath(vscode.Uri.file(wsRoot), resultToSend.file);
+          const fileUri = fullPath.toString();
+          this.searchHighlightManager.updateSearchResult(fileUri, resultToSend.lines);
+        }
 
         // Maintain state for the file
         if (resultToSend.file) {
@@ -330,6 +346,11 @@ export class SearchHandlers {
   }
 
   async cancelSearch(msgPipeline: ExtensionMessagePipeline) {
+    // Always clear search highlights, regardless of search state
+    if (this.searchHighlightManager) {
+      this.searchHighlightManager.clearSearch();
+    }
+
     if (this.abortController) {
       await msgPipeline.post('searchCancelled');
 
@@ -338,6 +359,7 @@ export class SearchHandlers {
       // Reset search session state
       this.searchCompleted = false;
       this.workspaceFiles.clear();
+
       // Ensure context is reset when a search is cancelled
       vscode.commands.executeCommand('setContext', 'haystackSearching', false);
     }
