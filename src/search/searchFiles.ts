@@ -2,7 +2,6 @@ import * as vscode from 'vscode';
 import * as path from 'path';
 import { HaystackProvider } from '../core/HaystackProvider';
 import { fuzzyMatchScore } from './utils';
-import { TELEMETRY_CONSTANTS } from '../monitor/TelemetryConstant';
 
 interface FileQuickPickItem extends vscode.QuickPickItem {
   filePath: string;
@@ -81,12 +80,7 @@ export function createFilesSearchQuickPick(
         const workspaces = haystackProvider.getWorkspaceRoots();
         const items: FileQuickPickItem[] = [];
         for (const workspace of workspaces) {
-          const response = await haystackProvider.searchFiles(
-            workspace,
-            query,
-            TELEMETRY_CONSTANTS.DEFAULT_FILE_SEARCH_MAX_RESULTS,
-            TELEMETRY_CONSTANTS.TELEMETRY_SOURCE_MANUAL,
-          );
+          const response = await haystackProvider.searchFiles(workspace, query);
           if (response.code !== 200 || !response.data || !response.data.results) {
             continue;
           }

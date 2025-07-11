@@ -179,7 +179,6 @@ export interface BaseSearchOptions {
   maxResultsPerFile?: number;
   beforeAfter?: number;
   path?: string;
-  telemetrySource?: string;
 }
 
 /**

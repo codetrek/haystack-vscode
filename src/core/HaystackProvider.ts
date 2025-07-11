@@ -15,8 +15,8 @@ import {
   WorkspaceSearchState,
 } from '../types/search';
 import { IHaystack } from './IHaystack';
-import { TelemetryOperation, getTelemetryEvents } from '../monitor/TelemetryTracker';
-import { TELEMETRY_CONSTANTS } from '../monitor/TelemetryConstant';
+import { TelemetryManager } from '../monitor/TelemetryManager';
+import { TELEMETRY_EVENTS } from '../monitor/TelemetryEvents';
 // Haystack API URLs
 const HAYSTACK_API_VERSION = '/api/v1';
 const WORKSPACE_CREATE_URL = `${HAYSTACK_API_VERSION}/workspace/create`;
@@ -417,7 +417,6 @@ export class HaystackProvider {
       {
         ...this.currentSearchSession.options,
         workspaceRoot,
-        telemetrySource: TELEMETRY_CONSTANTS.TELEMETRY_SOURCE_MANUAL, // Manual search from UI
       },
       async (result: SearchContentResult, isDone: boolean) => {
         if (isDone) {
@@ -471,19 +470,15 @@ export class HaystackProvider {
       throw new Error('No workspace folder is opened');
     }
 
-    const operation = new TelemetryOperation(
-      `workspace-creation`,
-      {
-        usage: TELEMETRY_CONSTANTS.WORKSPACE_CREATION,
-        performance: TELEMETRY_CONSTANTS.WORKSPACE_CREATION_PERFORMANCE,
-        failed: TELEMETRY_CONSTANTS.WORKSPACE_CREATION_FAILED,
-      },
-      { workspaceRoot: rootPath },
-    );
+    const startTime = performance.now();
+    const telemetryManager = TelemetryManager.getInstance();
 
     try {
       // Track workspace creation start
-      operation.start();
+      telemetryManager.logUsage(TELEMETRY_EVENTS.WORKSPACE_CREATION, {
+        workspaceRoot: rootPath,
+      });
+
       // Get configuration values
       const config = vscode.workspace.getConfiguration('haystack.search');
       const useGlobalFilters = config.get<boolean>('useGlobalFilters', true);
@@ -511,14 +506,31 @@ export class HaystackProvider {
       }
 
       // Track successful workspace creation with performance metrics
-      operation.end({
-        useGlobalFilters,
-        useGitIgnore,
-        customExcludeCount: customExclude.length,
-        includePatternCount: includePatterns.length,
-      });
+      telemetryManager.logPerformance(
+        TELEMETRY_EVENTS.WORKSPACE_CREATION_PERFORMANCE,
+        performance.now() - startTime,
+        {
+          workspaceRoot: rootPath,
+          useGlobalFilters,
+          useGitIgnore,
+          customExcludeCount: customExclude.length,
+          includePatternCount: includePatterns.length,
+        },
+      );
     } catch (error) {
-      operation.error(error instanceof Error ? error : new Error(String(error)));
+      // Track failed workspace creation
+      const duration = performance.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      telemetryManager.logError(
+        TELEMETRY_EVENTS.WORKSPACE_CREATION_FAILED,
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          workspaceRoot: rootPath,
+          duration,
+          error: errorMessage,
+        },
+      );
 
       throw new Error(`Failed to create workspace: ${error}`);
     }
@@ -584,25 +596,6 @@ export class HaystackProvider {
       throw new Error('No workspace folder is specified');
     }
 
-    // Set up telemetry
-    const telemetrySource = options.telemetrySource || TELEMETRY_CONSTANTS.UNKNOWN;
-    const telemetryEvents = getTelemetryEvents('STREAM_SEARCH', telemetrySource);
-    const operation = new TelemetryOperation(`stream-search`, telemetryEvents, {
-      queryLength: query.length,
-      workspaceRoot,
-      caseSensitive: !!options.caseSensitive,
-      hasIncludeFilter: !!options.include,
-      hasExcludeFilter: !!options.exclude,
-      hasPathFilter: !!options.path,
-      maxResults: options.maxResults || 0,
-      maxResultsPerFile: options.maxResultsPerFile || 0,
-      beforeAfter: options.beforeAfter || 0,
-    });
-
-    let firstResultTime: number | null = null;
-    let hasFirstResult = false;
-    let totalResults = 0;
-
     // Get unsaved files content (use provided ones or fetch all for workspace)
     const unsavedFiles = options.unsavedFiles || this.getUnsavedFiles(workspaceRoot);
 
@@ -632,49 +625,13 @@ export class HaystackProvider {
       unsaved_files_only: options.unsavedFilesOnly,
     };
 
-    // Wrap onResult callback to track telemetry
-    const wrappedOnResult = async (result: SearchContentResult, isDone: boolean) => {
-      // Track first result timing
-      if (!hasFirstResult && !isDone && result.file && result.lines && result.lines.length > 0) {
-        firstResultTime = performance.now();
-        hasFirstResult = true;
-
-        // Log first result milestone
-        operation.milestone({
-          telemetrySource,
-        });
-      }
-
-      // Count results
-      if (!isDone && result.lines) {
-        totalResults += result.lines.length;
-      }
-
-      // Track completion
-      if (isDone) {
-        operation.end({
-          totalResults,
-          hadFirstResult: hasFirstResult,
-          firstResultLatency: firstResultTime
-            ? operation.getElapsed() - (firstResultTime - performance.now())
-            : -1,
-          telemetrySource,
-          wasTruncated: result.truncate || false,
-        });
-      }
-
-      // Call the original callback
-      await onResult(result, isDone);
-    };
-
     try {
-      operation.start();
       // Get the stream from the Haystack API
       const stream = await this.haystack.postStream(SEARCH_CONTENT_URL, searchRequest);
 
       if (!stream) {
         // If stream isn't available, call onResult with empty result and isDone=true
-        await wrappedOnResult(
+        await onResult(
           {
             file: '',
             lines: [],
@@ -707,7 +664,7 @@ export class HaystackProvider {
               console.error('Error cancelling reader:', error);
             });
             // Notify caller of the aborted search
-            await wrappedOnResult(
+            await onResult(
               {
                 file: '',
                 lines: [],
@@ -734,7 +691,7 @@ export class HaystackProvider {
           // Process any remaining data in the buffer
           if (buffer.trim()) {
             try {
-              await this.processEventData(buffer, wrappedOnResult, true);
+              await this.processEventData(buffer, onResult, true);
             } catch (e) {
               console.error('Error processing final SSE chunk:', e);
             }
@@ -754,12 +711,10 @@ export class HaystackProvider {
           buffer = buffer.substring(eventEndIndex + 2);
 
           // Process each event
-          await this.processEventData(eventsData, wrappedOnResult, false);
+          await this.processEventData(eventsData, onResult, false);
         }
       }
     } catch (error) {
-      operation.error(error instanceof Error ? error : new Error(String(error)));
-
       // Don't report an error if the search was aborted
       if (abortSignal?.aborted) {
         console.log('Search aborted, suppressing error');
@@ -994,18 +949,14 @@ export class HaystackProvider {
   private async syncSingleWorkspace(workspaceRoot: string): Promise<void> {
     console.log(`Haystack: Starting workspace sync process for ${workspaceRoot}`);
 
-    const operation = new TelemetryOperation(
-      `workspace-sync`,
-      {
-        usage: TELEMETRY_CONSTANTS.WORKSPACE_SYNC,
-        performance: TELEMETRY_CONSTANTS.WORKSPACE_SYNC_PERFORMANCE,
-        failed: TELEMETRY_CONSTANTS.WORKSPACE_SYNC_FAILED,
-      },
-      { workspaceRoot },
-    );
+    const startTime = performance.now();
+    const telemetryManager = TelemetryManager.getInstance();
 
     try {
-      operation.start();
+      // Track workspace sync start
+      telemetryManager.logUsage(TELEMETRY_EVENTS.WORKSPACE_SYNC, {
+        workspaceRoot,
+      });
 
       // Get configuration values
       const config = vscode.workspace.getConfiguration('haystack.search');
@@ -1049,17 +1000,36 @@ export class HaystackProvider {
         throw new Error(syncResponse.data.message || 'Failed to sync workspace');
       }
 
+      const syncDuration = performance.now() - startTime;
       console.log(`Haystack: Successfully triggered indexing for ${workspaceRoot}`);
 
       // Track successful workspace sync with performance metrics
-      operation.end({
-        useGlobalFilters,
-        useGitIgnore,
-        customExcludeCount: customExclude.length,
-        includePatternCount: includePatterns.length,
-      });
+      telemetryManager.logPerformance(
+        TELEMETRY_EVENTS.WORKSPACE_SYNC_PERFORMANCE,
+        performance.now() - startTime,
+        {
+          workspaceRoot,
+          syncDuration,
+          useGlobalFilters,
+          useGitIgnore,
+          customExcludeCount: customExclude.length,
+          includePatternCount: includePatterns.length,
+        },
+      );
     } catch (error) {
-      operation.error(error instanceof Error ? error : new Error(String(error)));
+      // Track failed workspace sync
+      const duration = performance.now() - startTime;
+      const errorMessage = error instanceof Error ? error.message : String(error);
+
+      telemetryManager.logError(
+        TELEMETRY_EVENTS.WORKSPACE_SYNC_FAILED,
+        error instanceof Error ? error : new Error(String(error)),
+        {
+          workspaceRoot,
+          duration,
+          error: errorMessage,
+        },
+      );
 
       console.error(`Haystack: Failed to sync workspace ${workspaceRoot}: ${error}`);
       throw new Error(`Failed to sync workspace: ${error}`);
@@ -1300,20 +1270,8 @@ export class HaystackProvider {
     workspaceRoot: string,
     query: string,
     limit = 100,
-    telemetrySource?: string,
   ): Promise<SearchFilesResponse> {
-    const source = telemetrySource || TELEMETRY_CONSTANTS.UNKNOWN;
-    const telemetryEvents = getTelemetryEvents('FILE_SEARCH', source);
-    const operation = new TelemetryOperation(`file-search`, telemetryEvents, {
-      query,
-      queryLength: query.length,
-      workspaceRoot,
-      limit,
-      telemetrySource: source,
-    });
-
     try {
-      operation.start();
       // Ensure the Haystack server is running
       if (!this.haystack || this.haystack.getStatus() !== 'running') {
         return {
@@ -1328,15 +1286,6 @@ export class HaystackProvider {
       };
 
       const response = await this.post(SEARCH_FILES_URL, requestData);
-      // Track successful file search performance
-      const searchData = response.data?.data as SearchFilesResult | undefined;
-      const resultCount = searchData?.results?.length || 0;
-
-      operation.end({
-        resultCount,
-        responseCode: response.data?.code || response.status || 0,
-      });
-
       // Process the response
       if (response.data) {
         return {
@@ -1350,7 +1299,6 @@ export class HaystackProvider {
         message: 'Unknown error',
       };
     } catch (error) {
-      operation.error(error instanceof Error ? error : new Error(String(error)));
       console.error('Failed to search files:', error);
       return {
         code: 500,
@@ -1535,10 +1483,7 @@ export class HaystackProvider {
     );
 
     // Perform re-search using the same query and options as the active search
-    this.searchSingleFile(filePath, workspaceRoot, session.query, {
-      ...session.options,
-      telemetrySource: TELEMETRY_CONSTANTS.TELEMETRY_SOURCE_DOCS_CHANGED,
-    })
+    this.searchSingleFile(filePath, workspaceRoot, session.query, session.options)
       .then(async (result) => {
         // Verify the search session is still active and valid
         if (
