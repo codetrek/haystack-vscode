@@ -1,6 +1,7 @@
 import { HaystackProvider } from '@/core/HaystackProvider';
 import * as vscode from 'vscode';
 import { StringBuilder } from './StringBuilder';
+import { TELEMETRY_CONSTANTS } from '@/monitor/TelemetryConstant';
 
 interface HaystackFilesToolInput {
   query: string;
@@ -35,6 +36,7 @@ export class HaystackFilesTool implements vscode.LanguageModelTool<HaystackFiles
       options.input.workspace,
       options.input.query,
       options.input.limit || 500,
+      TELEMETRY_CONSTANTS.FILE_SEARCH_AI_TOOL,
     );
     if (response.code !== 200) {
       return new StringBuilder(

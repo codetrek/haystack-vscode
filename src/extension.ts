@@ -11,7 +11,7 @@ import { HayStackForTesting } from './core/HayStackForTesting';
 import { createTelemetryManager } from './monitor';
 import { ITelemetryManager } from './monitor/ITelemetryManager';
 import { SearchHighlightManager } from './search/SearchHighlight';
-import { TELEMETRY_EVENTS } from './monitor/TelemetryEvents';
+import { TELEMETRY_CONSTANTS } from './monitor/TelemetryConstant';
 
 // Constants
 const isDev = () =>
@@ -36,7 +36,7 @@ export function activate(context: vscode.ExtensionContext) {
   telemetryManager = createTelemetryManager(context);
 
   // Log extension activation
-  telemetryManager.logUsage(TELEMETRY_EVENTS.EXTENSION_ACTIVATED);
+  telemetryManager.logUsage(TELEMETRY_CONSTANTS.EXTENSION_ACTIVATED);
 
   // Simple activation logging without version checks
   console.log('Haystack extension activated');
@@ -354,7 +354,7 @@ export function deactivate() {
     searchHighlightManager = undefined;
   }
   if (telemetryManager) {
-    telemetryManager.logUsage(TELEMETRY_EVENTS.EXTENSION_DEACTIVATED);
+    telemetryManager.logUsage(TELEMETRY_CONSTANTS.EXTENSION_DEACTIVATED);
     telemetryManager.dispose();
     telemetryManager = undefined;
   }
