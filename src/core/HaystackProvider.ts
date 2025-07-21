@@ -1314,7 +1314,7 @@ export class HaystackProvider {
         doc.uri.scheme === 'file' && path.relative(workspaceRoot, doc.uri.fsPath) === filePath,
     );
 
-    if (document && document.isDirty) {
+    if (document /* && document.isDirty*/) {
       unsavedFiles.push({
         path: filePath,
         content: document.getText(),

@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.5.0]
+- feat: implement whole word search functionality.
+- feat: live re-search for modified files in search result.
+- feat: search result highlighting in editors.
+- Add more telemetry.
+- Some bug fixes.
+- Upgrade haystack core to 1.7.0 (including 1.6.0)
+  - feat: implement whole word matching feature
+  - feat: implement unsaved-files-only search optimization for better search performance
+  - fix: Make file include/exclude patterns case-insensitive
+  - Support streamable-http at endpoint `http://localhost:<port>/mcp`
+
 ## [1.4.0]
 
 - Search results now include changes from unsaved files.

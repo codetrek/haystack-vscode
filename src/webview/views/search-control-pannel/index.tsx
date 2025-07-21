@@ -35,6 +35,11 @@ export const SearchControlPanel: React.FC = () => {
     doSearch();
   };
 
+  const onWholeWordToggle = () => {
+    resetResult();
+    doSearch();
+  };
+
   const onKeyDown = (event: React.KeyboardEvent) => {
     if (event.key === 'Enter') {
       doSearch();
@@ -45,7 +50,12 @@ export const SearchControlPanel: React.FC = () => {
 
   return (
     <div onKeyDown={onKeyDown}>
-      <SearchTermInput onClear={onClearSearch} onSensitiveToggle={onSensitiveToggle} ref={ref} />
+      <SearchTermInput
+        onClear={onClearSearch}
+        onSensitiveToggle={onSensitiveToggle}
+        onWholeWordToggle={onWholeWordToggle}
+        ref={ref}
+      />
       <SearchOptions />
     </div>
   );
