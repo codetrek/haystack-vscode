@@ -43,6 +43,7 @@ export interface SearchContentRequest {
   query: string;
   editor: EditorContext;
   case_sensitive?: boolean;
+  whole_word?: boolean;
   filters?: SearchFilters;
   limit?: SearchLimit;
   before_after?: number;
@@ -88,6 +89,7 @@ export interface SearchMessage {
   query: string;
   options: {
     caseSensitive: boolean;
+    wholeWord: boolean;
     include: string;
     exclude: string;
     maxResults?: number;
@@ -173,6 +175,7 @@ export interface SearchFilesResponse {
  */
 export interface BaseSearchOptions {
   caseSensitive?: boolean;
+  wholeWord?: boolean;
   include?: string;
   exclude?: string;
   maxResults?: number;
@@ -187,6 +190,7 @@ export interface BaseSearchOptions {
  */
 export interface SearchOptions extends BaseSearchOptions {
   caseSensitive: boolean;
+  wholeWord: boolean;
   include: string;
   exclude: string;
   workspaceRoot?: string;

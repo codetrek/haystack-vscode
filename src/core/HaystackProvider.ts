@@ -596,6 +596,7 @@ export class HaystackProvider {
           : '',
       },
       case_sensitive: options.caseSensitive,
+      whole_word: options.wholeWord,
       filters: {
         path: options.path,
         include: options.include,

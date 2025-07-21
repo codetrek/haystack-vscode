@@ -6,12 +6,14 @@ import { useCombinedRef } from '../../hooks/useCombinedRef';
 export interface SearchTermInputProps {
   onClear?: () => void;
   onSensitiveToggle?: () => void;
+  onWholeWordToggle?: () => void;
   ref?: React.Ref<HTMLInputElement>;
 }
 
 export const SearchTermInput: React.FC<SearchTermInputProps> = ({
   onClear,
   onSensitiveToggle,
+  onWholeWordToggle,
   ref,
 }) => {
   const snap = useSnapshot(state, { sync: true });
@@ -32,6 +34,11 @@ export const SearchTermInput: React.FC<SearchTermInputProps> = ({
   function handleOnSensitiveToggle() {
     state.caseSensitive = !snap.caseSensitive;
     onSensitiveToggle?.();
+  }
+
+  function handleOnWholeWordToggle() {
+    state.wholeWord = !snap.wholeWord;
+    onWholeWordToggle?.();
   }
 
   function handleOnOptionsToggle() {
@@ -67,6 +74,14 @@ export const SearchTermInput: React.FC<SearchTermInputProps> = ({
         onClick={handleOnSensitiveToggle}
       >
         Aa
+      </button>
+      <button
+        className={`search-option-button input-option-button ${snap.wholeWord ? 'active' : ''}`}
+        id="wholeWordBtn"
+        title="Whole word"
+        onClick={handleOnWholeWordToggle}
+      >
+        Ab
       </button>
       <button
         className={`search-options-toggle ${snap.showOptions ? 'active' : ''}`}

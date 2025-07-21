@@ -142,6 +142,7 @@ export class SearchViewProvider implements vscode.WebviewViewProvider {
     // Directly trigger search using the search handlers with default options
     const defaultOptions = {
       caseSensitive: false,
+      wholeWord: false,
       include: '',
       exclude: '',
     };

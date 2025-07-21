@@ -5,5 +5,6 @@ export const state = proxy({
   includeFiles: '',
   excludeFiles: '',
   caseSensitive: false,
+  wholeWord: false,
   showOptions: false,
 });

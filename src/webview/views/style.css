@@ -77,7 +77,7 @@ body {
 
 /* Clear button styles */
 .clear-button {
-  right: 48px; /* Position it to the left of the case sensitive button */
+  right: 72px; /* Position it to the left of the case sensitive button */
   font-size: 10px;
   line-height: 10px;
 }
@@ -85,6 +85,10 @@ body {
 /* Adjust case sensitive button position */
 #caseSensitiveBtn {
   right: 24px;
+}
+#wholeWordBtn {
+  right: 48px;
+  text-decoration: underline;
 }
 
 .search-options-toggle {

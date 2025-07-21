@@ -14,6 +14,7 @@ export const useSearch = () => {
       }
       const options = {
         caseSensitive: state.caseSensitive,
+        wholeWord: state.wholeWord,
         ...(state.showOptions
           ? {
               include: state.includeFiles,

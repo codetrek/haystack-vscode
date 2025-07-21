@@ -124,6 +124,7 @@ export class SearchHandlers {
       // Start a new search session first
       this.haystackProvider.newSearch(query, {
         caseSensitive: options.caseSensitive,
+        wholeWord: options.wholeWord,
         include: options.include,
         exclude: options.exclude,
         maxResults,
