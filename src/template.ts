@@ -54,7 +54,7 @@ export function getSearchTemplate(context: vscode.ExtensionContext, webview: vsc
       <title>Haystack Search</title>
     </head>
     <body>
-      <div id="app-root"></div>
+      <div id="app-root" style="height:100%"></div>
       ${scriptUrl.map((url) => `<script src="${url}" nonce="${nonce}" crossorigin="anonymous"></script>`).join('\n')}
     </body>
     </html>

@@ -58,38 +58,32 @@ export const SearchTermInput: React.FC<SearchTermInputProps> = ({
         onChange={handleOnSearchTextChange}
       />
       {snap.searchTerm && (
-        <button
-          className="search-option-button input-option-button clear-button"
+        <div
+          className="codicon codicon-close search-option-button input-option-button clear-button"
           id="clearTextBtn"
           title="Clear search text"
           onClick={handleOnClear}
-        >
-          ✕
-        </button>
+        />
       )}
-      <button
-        className={`search-option-button input-option-button ${snap.caseSensitive ? 'active' : ''}`}
+      <div
+        className={`codicon codicon-case-sensitive search-option-button input-option-button ${snap.caseSensitive ? 'active' : ''}`}
         id="caseSensitiveBtn"
         title="Case sensitive"
         onClick={handleOnSensitiveToggle}
-      >
-        Aa
-      </button>
-      <button
-        className={`search-option-button input-option-button ${snap.wholeWord ? 'active' : ''}`}
+      />
+      <div
+        className={`codicon codicon-whole-word search-option-button input-option-button ${snap.wholeWord ? 'active' : ''}`}
         id="wholeWordBtn"
         title="Whole word"
         onClick={handleOnWholeWordToggle}
-      >
-        Ab
-      </button>
-      <button
+      />
+      <div
         className={`search-options-toggle ${snap.showOptions ? 'active' : ''}`}
         id="optionsToggle"
         onClick={handleOnOptionsToggle}
       >
         ⋮
-      </button>
+      </div>
     </div>
   );
 };

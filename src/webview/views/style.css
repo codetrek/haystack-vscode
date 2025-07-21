@@ -11,6 +11,7 @@ body {
 
 .search-container {
   padding: 2px;
+  height: calc(100vh - 4px); /* Adjust for any additional padding */
   flex: 1;
   display: flex;
   flex-direction: column;
@@ -21,7 +22,6 @@ body {
   display: flex;
   gap: 6px;
   margin: 4px 8px;
-  position: relative;
 }
 
 .search-input {
@@ -44,12 +44,11 @@ body {
 
 .search-option-button {
   position: absolute;
-  right: 24px;
-  top: 50%;
+  top: 19px;
   transform: translateY(-50%);
   cursor: pointer;
   color: var(--vscode-descriptionForeground);
-  width: 20px;
+  width: 18px;
   height: 18px;
   display: flex;
   align-items: center;
@@ -77,30 +76,29 @@ body {
 
 /* Clear button styles */
 .clear-button {
-  right: 72px; /* Position it to the left of the case sensitive button */
+  right: 68px; /* Position it to the left of the case sensitive button */
   font-size: 10px;
   line-height: 10px;
 }
 
 /* Adjust case sensitive button position */
 #caseSensitiveBtn {
-  right: 24px;
+  right: 48px;
 }
 #wholeWordBtn {
-  right: 48px;
-  text-decoration: underline;
+  right: 28px;
 }
 
 .search-options-toggle {
   position: absolute;
-  right: 6px;
-  top: 50%;
+  right: 14px;
+  top: 19px;
   transform: translateY(-50%);
   cursor: pointer;
   color: var(--vscode-descriptionForeground);
   background: none;
   border: none;
-  width: 18px;
+  width: 12px;
   height: 18px;
   display: flex;
   align-items: center;
@@ -198,6 +196,49 @@ body {
   ); /* Ensure background matches UI */
 }
 
+#workspace-groups {
+  height: calc(100% - 34px); /* Adjust for any additional padding */
+  overflow: auto;
+  scrollbar-width: thin; /* For Firefox */
+  /* Default: thumb transparent, track transparent */
+  scrollbar-color: transparent transparent;
+}
+
+#workspace-groups:hover {
+  /* On hover: thumb visible, track transparent */
+  scrollbar-color: var(--vscode-scrollbarSlider-background) transparent;
+}
+
+/* For Webkit-based browsers (Chrome, Safari, Edge) */
+#workspace-groups::-webkit-scrollbar {
+  width: 8px;
+}
+
+#workspace-groups::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+#workspace-groups::-webkit-scrollbar-thumb {
+  background-color: transparent; /* Initially transparent */
+  border-radius: 4px;
+  /* These define the appearance of the thumb when it becomes visible */
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+
+#workspace-groups:hover::-webkit-scrollbar-thumb {
+  background-color: var(--vscode-scrollbarSlider-background);
+}
+
+/* Apply hover/active styles directly to the thumb, they will work if thumb is visible */
+#workspace-groups::-webkit-scrollbar-thumb:hover {
+  background-color: var(--vscode-scrollbarSlider-hoverBackground);
+}
+
+#workspace-groups::-webkit-scrollbar-thumb:active {
+  background-color: var(--vscode-scrollbarSlider-activeBackground);
+}
+
 .workspace-group {
   margin-bottom: 10px;
   border: 1px solid var(--vscode-editorGroup-border, var(--vscode-panel-border));
@@ -280,7 +321,7 @@ body {
 }
 
 .file-group {
-  margin-bottom: 12px;
+  margin-bottom: 2px;
   background: var(--vscode-list-inactiveSelectionBackground);
   border-radius: 4px;
   overflow: hidden;
@@ -348,7 +389,7 @@ body {
 }
 
 .result-item {
-  padding: 4px 4px 4px 16px;
+  padding: 0px 4px 0px 16px;
   cursor: pointer;
   display: flex;
   align-items: center;
@@ -370,6 +411,7 @@ body {
 .line-content {
   font-family: 'Segoe WPC', 'Segoe UI', 'sans-serif';
   font-size: 13px;
+  line-height: 23px;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
