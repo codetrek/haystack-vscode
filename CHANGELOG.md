@@ -1,6 +1,13 @@
 # Changelog
 
-## [1.5.0]
+## [1.6.0] - 2025/08/21
+
+- Upgrade haystack core to 1.8.0
+  - Breaking change: Upgrade storage version to 1.4
+  - Optimize: disk usage dropped ~40%, index time reduce ~20%
+
+## [1.5.0] - 2025/07/21
+
 - feat: implement whole word search functionality.
 - feat: live re-search for modified files in search result.
 - feat: search result highlighting in editors.
@@ -12,7 +19,7 @@
   - fix: Make file include/exclude patterns case-insensitive
   - Support streamable-http at endpoint `http://localhost:<port>/mcp`
 
-## [1.4.0]
+## [1.4.0] - 2025/06/27
 
 - Search results now include changes from unsaved files.
 - Search function & files now support multiple folders in workspace.
@@ -22,11 +29,11 @@
   - Increase max indexiable file size to 5MiB.
   - Bugfix: There will be no result if a file is passed in 'path' filter
 
-## [1.3.1]
+## [1.3.1] - 2025/06/20
 
 - Fix Language Model Tool API register issue
 
-## [1.3.0]
+## [1.3.0] - 2025/06/19
 
 - Feat: Enable function search by default
 - Feat: Enable file search by default
@@ -40,7 +47,7 @@
 - Using domain socket to communicate with haystack core on Non-windows
 - Refactor using React
 
-## [1.2.1]
+## [1.2.1] - 2025/06/05
 
 - Optimize UI: change fonts, narrow paddings, more space for contents, fix loading state
 - Upgrade haystack core to 1.4.1
@@ -49,7 +56,7 @@
   - Optimize: dedup keywords with prefix
 - Added `haystack.searchFiles` command to support fuzzy match for quick file opening
 
-## [1.2.0]
+## [1.2.0] - 2025/05/22
 
 - Improved the search functionality to index and search across multiple workspace folders and aggregate results.
 - Enhanced the UI to clearly indicate the workspace origin of each search result.
@@ -66,7 +73,7 @@
   - Supports finding substrings within CamelCase identifiers (e.g., `bookmarkbar` in `UpdateBookmarkBarIfNecessary`).
   - Support leading special characters (e.g., `->AddBookmark`).
 
-## [1.1.5]
+## [1.1.5] - 2025/05/15
 
 - Improve the performance of click go to search result.
 - Upgrade haystack core to v1.3.0

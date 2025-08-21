@@ -12,6 +12,9 @@ vscode-haystack-search is a Visual Studio Code extension that leverages Haystack
 - After installing the extension, you can initiate a search by using the command palette (Ctrl+Shift+P) and selecting "Haystack Search".
 - Enter your search query and view the results displayed in the search panel.
 
+## Core search provider
+Refer to: [github.com/ai-microsoft/haystack.git](https://github.com/ai-microsoft/haystack.git)
+
 ## Instructions to Build and Debug locally
 
 ### Setup
